@@ -69,6 +69,8 @@ let toolCallSpec = { name: "update_client_data", args: {} };
 let modelEgress = [];
 /** Every non-model outbound call this turn — the sibling-function surface (write-back, sync). */
 let outboundCalls = [];
+/** How `paige-write-back` answers this drive, as `{ status, body }`; unset, it answers success. */
+let writeBackAnswer = null;
 /**
  * An Anthropic-native tool_use stream. `gatewayCompat` converts it to OpenAI-compat deltas, so
  * the handler's agentic loop sees a real tool call. Without this the whole tool loop — where
@@ -108,7 +110,8 @@ globalThis.fetch = async (url, init) => {
   if (href.includes("anthropic.com")) modelEgress.push(String(init?.body ?? ""));
   else if (!href.includes("voyageai.com")) {
     outboundCalls.push({ url: href, body: String(init?.body ?? "") });
-    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    const answer = href.includes("paige-write-back") && writeBackAnswer ? writeBackAnswer : { status: 200, body: { success: true } };
+    return new Response(JSON.stringify(answer.body), { status: answer.status, headers: { "Content-Type": "application/json" } });
   }
   if (modelStub && href.includes("anthropic.com")) {
     const wantsStream = (() => {
@@ -200,6 +203,8 @@ async function drive({
   /** Extra RLS-emulating tables merged over the defaults — needed for the confirm store, whose
    *  rows a scenario has to author because they model a claim that mutates as it is read. */
   tablesExtra = {},
+  /** Answers for `functions.invoke`, by function name — `{ data, error }` as supabase-js returns. */
+  functionsExtra = {},
   /** Inject a postgrest error for a specific table, to drive the "the write was REJECTED" path. */
   tableErrorsExtra = {},
   /** Drive a model that asserts approval itself, with NO human and no request-body echo. */
@@ -207,11 +212,14 @@ async function drive({
   /** Called synchronously on every insert, so a scenario can model read-your-own-write. */
   onInsert = undefined,
   concurrentRequests = 1,
+  /** How `paige-write-back` answers, as `{ status, body }` — to drive a write that answered badly. */
+  writeBack = null,
 }) {
   const logged = [];
   embedCount = 0;
   modelEgress = [];
   outboundCalls = [];
+  writeBackAnswer = writeBack;
   modelStub = stream;
   readCheckReply = readCheck;
   toolCallOnce = !!toolCall;
@@ -224,6 +232,7 @@ async function drive({
 
   const rec = fake.setScenario({
     onInsert,
+    functions: functionsExtra,
     authUser: { id: USER, email: "owner@example.test" },
     rpcs: {
       check_rate_limit: { data: true, error: null },
@@ -829,8 +838,11 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
  */
 function makeConfirmStore(seed = []) {
   const rows = seed.map((r, i) => ({ id: `row-seed-${i}`, consumed: false, tenant_id:null, thread_id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc', scoped_client_id:r.args?.client_id??null, expires_at:'2099-01-01T00:00:00Z', server_issued_at:'2026-01-01T00:00:00Z', ...r }));
+  // `consumed_at` is a real time: the handler's own claim stamps it, and a row seeded consumed was
+  // consumed long before any request a check drives (the approval outcome asks which came first).
+  const consumedAt = (r) => (r.consumed ? r.consumedAt ?? "2026-01-01T00:00:00.000Z" : null);
   const matches = (r, filters) => filters.every(([op, col, value, extra]) => {
-    const v = col === "consumed_at" ? (r.consumed ? "consumed" : null) : r[col];
+    const v = col === "consumed_at" ? consumedAt(r) : r[col];
     if (op === "eq") return v === value;
     if (op === "filter") return value === "eq" && col.startsWith("args->>") && String(r.args?.[col.slice(7)]) === String(extra);
     if (op === "neq") return v != null && v !== value;
@@ -852,13 +864,13 @@ function makeConfirmStore(seed = []) {
       const hits = rows.filter((row) => matches(row, filters))
         .slice(0, filters.find(([op]) => op === "limit")?.[1] ?? rows.length);
       if (update) for (const row of hits) {
-        if (Object.hasOwn(update, "consumed_at")) row.consumed = update.consumed_at !== null;
+        if (Object.hasOwn(update, "consumed_at")) { row.consumed = update.consumed_at !== null; row.consumedAt = update.consumed_at; }
         for (const [key, value] of Object.entries(update)) if (key !== "consumed_at") row[key] = value;
       }
       return hits.map((row) => {
         if (columns === "*") return JSON.parse(JSON.stringify(row));
         return Object.fromEntries(String(columns ?? "id").split(",").map((key) => [key,
-          key === "consumed_at" ? (row.consumed ? "consumed" : null) : structuredClone(row[key]),
+          key === "consumed_at" ? consumedAt(row) : structuredClone(row[key]),
         ]));
       });
     },
@@ -1960,6 +1972,206 @@ const mirrorConfirms = (st) => (t, row) => {
   await h25Drive(h25Store, { declinedConfirmations: [h25Composite, h25Row.fingerprint] }, null);
   assert("18.H27", h25Store.rows[0].consumed);
 
+  // 18.OUT1–OUT12 — THE CARD IS TOLD WHAT BECAME OF EACH APPROVAL, and only what the server knows.
+  // Owner-approved recovery design, 2026-09-26: the card that asked stays on screen and reports
+  // each action as ran, didn't run, or couldn't confirm, in a sentence the server writes. These
+  // drive the real handler through every door that can spend or refuse an approval, including the
+  // answers that never come back.
+  {
+    const { executorFailureSpeech } = await import("../../supabase/functions/_shared/crm-command/executor-error.ts");
+    const outcomeOf = (r) => r.bodyText.split("\n").filter((l) => l.startsWith("data: ") && l !== "data: [DONE]")
+      .map((l) => { try { return JSON.parse(l.slice(6)); } catch { return null; } })
+      .filter((f) => f && f.paige_approval_outcome).map((f) => f.paige_approval_outcome);
+    const toldModel = (r) => r.modelEgress.map((b) => b.replace(/\\"/g, '"')).join("\n");
+    const show = (r) => JSON.stringify(outcomeOf(r));
+
+    // OUT1/OUT2 — the general gate: an approved write that ran, and a turn with no approvals.
+    const o1Store = makeConfirmStore();
+    const o1Issued = await hDrive(o1Store);
+    const o1Token = hCards(o1Issued)[0]?.fingerprint;
+    const o1 = await hDrive(o1Store, { approvedConfirmations: [o1Token] });
+    assert("18.OUT1 an approval that ran is reported ran, with nothing to explain",
+      wroteBack(o1) && outcomeOf(o1).length === 1
+        && JSON.stringify(outcomeOf(o1)[0]) === JSON.stringify({ actions: [{ fingerprint: o1Token, outcome: "ran" }] }), show(o1));
+    assert("18.OUT2 a turn that carried no approvals sends no outcome", !!o1Token && outcomeOf(o1Issued).length === 0, show(o1Issued));
+
+    // OUT3 — the general gate's ambiguous terminal: said once, for the whole card, and nothing ran.
+    const o3Store = makeConfirmStore([
+      { user_id: USER, tool_name: "update_client_data", fingerprint: "3".repeat(16), args: hardeningArgs, issued_in_request: "an-earlier-request" },
+      { user_id: USER, tool_name: "update_client_data", fingerprint: "4".repeat(16), args: { client_id: OWN, updates: { goal: "a different plan" } }, issued_in_request: "an-earlier-request" },
+    ]);
+    const o3 = await drive({
+      stream: true, clientId: OWN, extraBody: { threadId: THREAD, approvedConfirmations: ["3".repeat(16), "4".repeat(16)] },
+      toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "drifted" }, confirm: true } }, ...CONFIRM,
+      tablesExtra: { paige_pending_confirmations: o3Store.table },
+    });
+    const o3Frame = outcomeOf(o3)[0];
+    assert("18.OUT3 an ambiguous approval is reported not run, once for the whole card",
+      !wroteBack(o3) && o3Store.rows.every((row) => !row.consumed)
+        && o3Frame?.note === "Nothing changed. More than one approval was waiting, so Paige stopped rather than guess."
+        && o3Frame.actions.length === 2 && o3Frame.actions.every((a) => a.outcome === "not_run" && !("note" in a)), show(o3));
+
+    // OUT4–OUT8 — the CRM door, one answer from crm-command at a time.
+    const crmDrive = (store, approved, answer) => drive({
+      stream: true, extraBody: { threadId: THREAD, approvedConfirmations: approved },
+      toolCall: { name: "crm_create_contact", args: h25Args },
+      rpcOverrides: { ...CONFIRM.rpcOverrides, get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT }], error: null } },
+      tablesExtra: { paige_pending_confirmations: store.table, user_roles: [{ role: "admin" }] }, onInsert: mirrorConfirms(store),
+      functionsExtra: answer ? { "crm-command": answer } : {},
+    });
+    const httpError = (body) => ({ data: null, error: { name: "FunctionsHttpError", message: "Edge Function returned a non-2xx status code", context: { json: async () => body } } });
+    const crmRow = { ...h25Row, fingerprint: "5".repeat(16) };
+    const crmSpent = (r) => r.rec.functions.some((call) => call.name === "crm-command" && call.body.approved_fingerprint === crmRow.fingerprint);
+    const unconfirmedOne = "This may have gone through. Check before asking again, so it doesn't happen twice.";
+
+    const o4 = await crmDrive(makeConfirmStore([crmRow]), [crmRow.fingerprint],
+      { data: { ok: true, outcome: "succeeded", readback: { id: "aaaa1111-2222-4333-8444-555566667777" }, receipt_recorded: true }, error: null });
+    assert("18.OUT4 a contact the CRM door created is reported ran",
+      crmSpent(o4) && JSON.stringify(outcomeOf(o4)[0]) === JSON.stringify({ actions: [{ fingerprint: crmRow.fingerprint, outcome: "ran" }] }), show(o4));
+
+    const o5 = await crmDrive(makeConfirmStore([crmRow]), [crmRow.fingerprint], { data: null, error: Object.assign(
+      new Error("Failed to send a request to the Edge Function"), { name: "FunctionsFetchError", context: new TypeError("fetch failed") }) });
+    assert("18.OUT5 when crm-command's answer never came back, the card says it may have gone through, and so does Paige",
+      crmSpent(o5) && outcomeOf(o5)[0]?.actions?.[0]?.outcome === "unconfirmed" && outcomeOf(o5)[0]?.note === unconfirmedOne
+        && /"outcome_unknown":\s*true/.test(toldModel(o5)) && /could not confirm whether it went through/.test(toldModel(o5))
+        && !/Nothing should be claimed as changed/.test(toldModel(o5)), show(o5));
+
+    const o6 = await crmDrive(makeConfirmStore([crmRow]), [crmRow.fingerprint], httpError({ ok: false, outcome: "refused",
+      code: "CRM_READBACK_UNAVAILABLE", ...executorFailureSpeech("CRM_READBACK_UNAVAILABLE", [], "unproven") }));
+    assert("18.OUT6 crm-command's own 'could not confirm the earlier attempt' is reported as could not confirm",
+      crmSpent(o6) && outcomeOf(o6)[0]?.actions?.[0]?.outcome === "unconfirmed" && outcomeOf(o6)[0]?.note === unconfirmedOne, show(o6));
+
+    const o7 = await crmDrive(makeConfirmStore([crmRow]), [crmRow.fingerprint], httpError({ ok: false, outcome: "failed", code: "CRM_CONTACT_ALREADY_EXISTS" }));
+    assert("18.OUT7 a change crm-command refused is reported as not gone through, and never as 'nothing changed'",
+      crmSpent(o7) && outcomeOf(o7)[0]?.actions?.[0]?.outcome === "not_run" && outcomeOf(o7)[0]?.note === "It didn't go through."
+        && !/"outcome_unknown"/.test(toldModel(o7)), show(o7));
+
+    const o8Composite = `${crmRow.fingerprint}:11111111-1111-4111-8111-111111111111`;
+    const o8 = await crmDrive(makeConfirmStore([crmRow]), [o8Composite]);
+    assert("18.OUT8 an approval the CRM door could not claim is reported not run, with that reason",
+      !o8.rec.functions.some((call) => call.name === "crm-command")
+        && JSON.stringify(outcomeOf(o8)[0]) === JSON.stringify({ actions: [{ fingerprint: o8Composite, outcome: "not_run" }],
+          note: "Nothing changed. That approval no longer matches anything Paige can run." }), show(o8));
+
+    // OUT9–OUT11 — action_advance: a card minted before the id check, and the RPC's two failure kinds.
+    const advDrive = (store, approved, args, rpc = {}) => drive({
+      stream: true, extraBody: { threadId: THREAD, approvedConfirmations: approved },
+      toolCall: { name: "action_advance", args: { ...args, confirm: true } },
+      rpcOverrides: { ...CONFIRM.rpcOverrides, ...rpc },
+      tablesExtra: { paige_pending_confirmations: store.table, user_roles: [{ role: "admin" }] }, onInsert: mirrorConfirms(store),
+    });
+    const advRow = (fingerprint, args) => ({ user_id: USER, tool_name: "action_advance", fingerprint, args, issued_in_request: "an-earlier-request" });
+    const shortArgs = { action_id: "424b85ac", to_status: "dismissed" };
+    const o9Store = makeConfirmStore([advRow("6".repeat(16), shortArgs)]);
+    const o9 = await advDrive(o9Store, ["6".repeat(16)], shortArgs);
+    assert("18.OUT9 a card minted before the id check is refused before it runs, and reported as such",
+      o9Store.rows[0].consumed && !o9.rec.rpc.some((call) => call.name === "advance_action")
+        && outcomeOf(o9)[0]?.actions?.[0]?.outcome === "not_run"
+        && outcomeOf(o9)[0]?.note === "Nothing changed. Paige couldn't tell exactly which item this was, so she stopped.", show(o9));
+
+    const wholeArgs = { action_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", to_status: "dismissed" };
+    const o10Store = makeConfirmStore([advRow("7".repeat(16), wholeArgs)]);
+    const o10 = await advDrive(o10Store, ["7".repeat(16)], wholeArgs,
+      { advance_action: { data: null, error: { code: "", message: "TypeError: fetch failed", details: "", hint: "" } } });
+    assert("18.OUT10 a database call whose answer was lost in transit is reported as could not confirm, never as failed",
+      o10Store.rows[0].consumed && o10.rec.rpc.some((call) => call.name === "advance_action")
+        && outcomeOf(o10)[0]?.actions?.[0]?.outcome === "unconfirmed" && outcomeOf(o10)[0]?.note === unconfirmedOne
+        && /could not confirm whether it went through/.test(toldModel(o10)), show(o10));
+
+    const o11Store = makeConfirmStore([advRow("8".repeat(16), wholeArgs)]);
+    const o11 = await advDrive(o11Store, ["8".repeat(16)], wholeArgs,
+      { advance_action: { data: null, error: { code: "P0001", message: "ACTION_NOT_FOUND", details: "", hint: "" } } });
+    assert("18.OUT11 a database refusal is reported as not gone through",
+      o11Store.rows[0].consumed && outcomeOf(o11)[0]?.actions?.[0]?.outcome === "not_run"
+        && outcomeOf(o11)[0]?.note === "It didn't go through." && !/could not confirm whether/.test(toldModel(o11)), show(o11));
+
+    // OUT12 — a batch that ended two ways: each row carries its own sentence, and only the one
+    // that did not run carries one.
+    const o12Store = makeConfirmStore([advRow("9".repeat(16), wholeArgs)]);
+    const o12Issued = await hDrive(o12Store);
+    const o12Token = hCards(o12Issued)[0]?.fingerprint;
+    const o12 = await hDrive(o12Store, { approvedConfirmations: [o12Token, "9".repeat(16)] });
+    assert("18.OUT12 a mixed batch reports each approval in the order sent, with a sentence only where one did not run",
+      wroteBack(o12) && !o12Store.rows.find((row) => row.fingerprint === "9".repeat(16))?.consumed
+        && JSON.stringify(outcomeOf(o12)[0]) === JSON.stringify({ actions: [
+          { fingerprint: o12Token, outcome: "ran" },
+          { fingerprint: "9".repeat(16), outcome: "not_run", note: "Nothing changed. Paige didn't run this." },
+        ] }), show(o12));
+
+    // OUT13 — the general gate could not look the approval up: our side's failure, and nothing ran.
+    // Only the approved-set lookup fails (it asks for UNconsumed rows); the look for an earlier use
+    // (consumed rows) answers normally.
+    const lookupFails = ({ op, filters }) => op === "select"
+      && filters.some(([o, c, v]) => o === "is" && c === "consumed_at" && v === null)
+      && filters.some(([o, c]) => o === "in" && c === "fingerprint")
+      ? { code: "57014", message: "canceling statement due to statement timeout" } : undefined;
+    const o13Store = makeConfirmStore([
+      { user_id: USER, tool_name: "update_client_data", fingerprint: "a1".repeat(8), args: hardeningArgs, issued_in_request: "an-earlier-request" },
+    ]);
+    const o13 = await drive({
+      stream: true, clientId: OWN, extraBody: { threadId: THREAD, approvedConfirmations: ["a1".repeat(8)] },
+      toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "drifted" }, confirm: true } }, ...CONFIRM,
+      tablesExtra: { paige_pending_confirmations: o13Store.table },
+      tableErrorsExtra: { "paige_pending_confirmations:select": lookupFails },
+    });
+    assert("18.OUT13 an approval the general gate could not look up is reported not run, as our side's failure",
+      !wroteBack(o13) && !o13Store.rows[0].consumed
+        && JSON.stringify(outcomeOf(o13)[0]) === JSON.stringify({ actions: [{ fingerprint: "a1".repeat(8), outcome: "not_run" }],
+          note: "Nothing changed. Something went wrong on our side while checking your approval." }), show(o13));
+
+    // OUT14 — the look for an earlier use itself fails: nobody knows, and the card says only that.
+    const earlierLookFails = ({ op, filters }) => op === "select" && filters.some(([o, c]) => o === "lt" && c === "consumed_at")
+      ? { code: "57014", message: "canceling statement due to statement timeout" } : undefined;
+    const o14Store = makeConfirmStore([
+      { user_id: USER, tool_name: "update_client_data", fingerprint: "3".repeat(16), args: hardeningArgs, issued_in_request: "an-earlier-request" },
+      { user_id: USER, tool_name: "update_client_data", fingerprint: "4".repeat(16), args: { client_id: OWN, updates: { goal: "a different plan" } }, issued_in_request: "an-earlier-request" },
+    ]);
+    const o14 = await drive({
+      stream: true, clientId: OWN, extraBody: { threadId: THREAD, approvedConfirmations: ["3".repeat(16), "4".repeat(16)] },
+      toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "drifted" }, confirm: true } }, ...CONFIRM,
+      tablesExtra: { paige_pending_confirmations: o14Store.table },
+      tableErrorsExtra: { "paige_pending_confirmations:select": earlierLookFails },
+    });
+    assert("18.OUT14 when the server cannot look for an earlier use, it says only that it couldn't confirm",
+      !wroteBack(o14) && outcomeOf(o14)[0]?.actions?.length === 2 && outcomeOf(o14)[0].actions.every((a) => a.outcome === "unconfirmed")
+        && outcomeOf(o14)[0]?.note === "These may have gone through. Check before asking again, so nothing happens twice.", show(o14));
+
+    // OUT15 — an approval used before this request (the row is already consumed): "didn't run" is
+    // true of THIS request and says nothing about the earlier one, which may have done the work.
+    const usedNote = "That approval can't be used any more. Check before asking again, so it doesn't happen twice.";
+    const o15Row = { ...crmRow, fingerprint: "c".repeat(16), consumed: true };
+    const o15 = await crmDrive(makeConfirmStore([o15Row]), [o15Row.fingerprint],
+      httpError({ ok: false, outcome: "refused", code: "CRM_APPROVAL_CLAIM_INVALID" }));
+    const o15bStore = makeConfirmStore([
+      { user_id: USER, tool_name: "update_client_data", fingerprint: "d".repeat(16), args: hardeningArgs, issued_in_request: "an-earlier-request", consumed: true },
+    ]);
+    const o15b = await drive({
+      stream: true, clientId: OWN, extraBody: { threadId: THREAD, approvedConfirmations: ["d".repeat(16)] },
+      toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "drifted" }, confirm: true } }, ...CONFIRM,
+      tablesExtra: { paige_pending_confirmations: o15bStore.table }, onInsert: mirrorConfirms(o15bStore),
+    });
+    assert("18.OUT15 an approval already used before this request is reported as unusable, never as didn't run — at either door",
+      JSON.stringify(outcomeOf(o15)[0]) === JSON.stringify({ actions: [{ fingerprint: o15Row.fingerprint, outcome: "unconfirmed" }], note: usedNote })
+        && !wroteBack(o15b)
+        && JSON.stringify(outcomeOf(o15b)[0]) === JSON.stringify({ actions: [{ fingerprint: "d".repeat(16), outcome: "unconfirmed" }], note: usedNote }),
+      `${show(o15)} ${show(o15b)}`);
+
+    // OUT16 — a write that answered only with an error, no success claim: never "done", and Paige
+    // is told the same as the card before she answers.
+    const o16Store = makeConfirmStore();
+    const o16Issued = await hDrive(o16Store);
+    const o16Token = hCards(o16Issued)[0]?.fingerprint;
+    const o16 = await hDrive(o16Store, { approvedConfirmations: [o16Token] }, { writeBack: { status: 403, body: { error: "Forbidden" } } });
+    assert("18.OUT16 a write that answered only with an error is never reported done, and Paige is told she couldn't confirm",
+      wroteBack(o16) && outcomeOf(o16)[0]?.actions?.[0]?.outcome === "unconfirmed" && outcomeOf(o16)[0]?.note === unconfirmedOne
+        && /could not confirm whether it went through/.test(toldModel(o16)), show(o16));
+
+    // OUT17 — a change the CRM door reports as not applied carries that fact to the card, so a
+    // refusal reads "didn't run" and offers asking again; the same refusal without it would not.
+    assert("18.OUT17 crm-command's answered refusal is marked not applied, and a lost answer is not",
+      /"not_applied":\s*true/.test(toldModel(o7)) && !/"not_applied"/.test(toldModel(o5)) && !/"not_applied"/.test(toldModel(o6)), "");
+  }
+
   const h28Store = makeConfirmStore();
   const h28First = await hDrive(h28Store);
   h28Store.rows[0].args = { updates: { goal: hardeningArgs.updates.goal }, client_id: OWN };
@@ -2716,6 +2928,10 @@ const mirrorConfirms = (st) => (t, row) => {
   assert("22.3 real adapter validates stored SDK code instead of model's invalid replacement",acquired(approved)[0]?.args._input.session_id===SESSION&&acquired(approved)[0]?.args._input.tenant_id===CALLER_TENANT);
   const audit=approved.rec.inserts.find(i=>i.table==="paige_audit_log"&&i.row.action==="n8n_create_workflow")?.row;
   assert("22.4 refused n8n adapter result is audited as failed with safe reason",audit?.payload.outcome==="failed"&&audit?.payload.error==="forbidden",JSON.stringify(audit));
+  // The n8n tools report in `ok`, and refuse before writing unless they say outcome_unknown: the
+  // card reads that as didn't run. Read as any other tool, the same answer would be couldn't confirm.
+  const n8nOutcome=approved.bodyText.split("\n").filter(l=>l.startsWith("data: ")&&l!=="data: [DONE]").map(l=>{try{return JSON.parse(l.slice(6))}catch{return null}}).find(f=>f&&f.paige_approval_outcome)?.paige_approval_outcome;
+  assert("22.4b the card reports an approved n8n change the adapter refused as didn't run",JSON.stringify(n8nOutcome)===JSON.stringify({actions:[{fingerprint:issuedApproval(st.rows[0]),outcome:"not_run"}],note:"It didn't go through."}),JSON.stringify(n8nOutcome));
   assert("22.5 audit excludes SDK code and provider input",!JSON.stringify(audit).includes("export default")&&!JSON.stringify(audit).includes("Owner approved design"));
   const replay=await drive({...base,extraBody:{threadId:THREAD,approvedConfirmations:[issuedApproval(st.rows[0])]},toolCall:{name:"n8n_create_workflow",args:{...sdk,code:"",confirm:true}}});
   assert("22.6 clicked n8n approval cannot acquire again on replay",acquired(replay).length===0);

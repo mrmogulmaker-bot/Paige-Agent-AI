@@ -341,6 +341,25 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
+### Approval recovery — after Approve, the card answers for what happened (branch `claude/festive-tesla-n0cjrc`, 2026-09-26)
+
+Owner-approved design, **Solo only by ruling** ("Nothing else changes. Solo only. No pilot gating."). The client
+behaviour is gated on the one mount that passes `soloTenantSafety` (`SoloPaigeWorkspace` → `PaigeAIChat`), not on a
+tier flag: the gate is the surface, and only the standalone Solo shell (`/solo/{account}`) mounts it. Sub-accounts
+enter through `BusinessEntry` → `AgencyApp mode="subaccount"`, which does not. The server half (the
+`paige_approval_outcome` frame) is emitted on every turn that carries approvals, for every caller; every surface
+other than the Solo chat consumes it as a no-op.
+
+| Capability | God (operator desk) | Agency-as-tenant | Standalone Solo | Sub-account | Client | Anonymous | Deploy state |
+|---|---|---|---|---|---|---|---|
+| After Approve: record where the card was, Running…, then Done / Didn't run / mixed / Couldn't confirm | — (unchanged) | — (unchanged) | ✓ on merge | — (unchanged) | — (no approval card) | 403 | **PROOF OWED:** frontend ships on merge; authenticated Solo drive owed |
+| `paige_approval_outcome` frame from the chat handler | emitted, ignored | emitted, ignored | emitted, rendered | emitted, ignored | — | 403 | **PROOF OWED:** `paige-ai-chat` redeploys on merge; byte-verify owed |
+| CRM receipt reads "Added" for a created record (owner copy ruling) | ✓ | ✓ | ✓ | ✓ | — | 403 | frontend, every chat mount that shows the receipt |
+
+Honest note (§13): the outcome is not persisted, so a reload shows the older settled line ("Earlier, Paige asked you
+to confirm: …") and no outcome card. The rendered evidence is a harness of the real chat component tree
+(`docs/evidence/ui-delivery/solo-approval-recovery/`), not a drive of the deployed shell (§32.c/§70.1 owed).
+
 ### Live Conversation — admission is rollout configuration, not identity (INT-104, 2026-09-24)
 
 **§66, same commit as the ship.** Live Conversation is one shared capability. Any account whose

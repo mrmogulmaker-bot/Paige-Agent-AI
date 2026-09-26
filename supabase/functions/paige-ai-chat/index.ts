@@ -21,6 +21,7 @@ import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { classifyAction, clampLaneByRisk, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
 import { confirmFingerprint, CONFIRM_IDENTITY_KEY, confirmIdentityValue, unaddressableConfirmArgs, unaddressableArgsRefusal } from "../_shared/confirm-fingerprint.ts";
+import { buildApprovalOutcome, classifySpentApproval, classifyUnspentApproval, invokeOutcomeUnknown, OUTCOME_UNKNOWN_NOTE, refusedByDatabase, sayWhatTheCardSays, settleUsedEarlier, thrownOutcomeUnknown, type ApprovalRefusalReason } from "../_shared/approval-outcome.ts";
 import { resolveSourceThreadLink } from "../_shared/source-thread-link.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
@@ -946,6 +947,20 @@ serve(async (req) => {
      * about others.
      */
     const approvalChannel = new Map<string, string>();
+    // WHAT BECAME OF EACH APPROVAL THE OPERATOR SENT, reported back to the card that asked
+    // (`paige_approval_outcome`, _shared/approval-outcome.ts). Recorded where it happens, read once
+    // at the end of the turn: which call spent each approval, why a tool's approvals were refused,
+    // which tool an approval belongs to (where a lookup saw it), and what each call returned.
+    const approvalSpend = new Map<string, string>();
+    const approvalRefusals = new Map<string, ApprovalRefusalReason>();
+    const approvalTokenTool = new Map<string, string>();
+    const toolResultContent = new Map<string, string>();
+    // Before anything in this request can use an approval: one used before this moment was used by
+    // an earlier request, and whatever that was may have done the work.
+    const approvalRequestStartedAt = new Date().toISOString();
+    // A failed approved-set lookup cannot say which approvals it was checking — that is what failed —
+    // so the ones nothing else accounts for are reported as that failure, not as "not run".
+    let approvalLookupFailed = false;
 
     // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
     //
@@ -8404,6 +8419,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 console.error("[paige] CRM approved-set lookup failed — failing to the honest refusal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce, message: approvedRowsError?.message ?? null }));
                 approvalResolutionFailed = "lookup_failed";
               } else {
+                for (const row of approvedRows ?? []) {
+                  for (const token of approvedConfirmations) {
+                    if (token.split(":")[0] === row.fingerprint) approvalTokenTool.set(token, tc.function.name);
+                  }
+                }
                 // The count of THIS capability's calls in this turn decides whether the sole-candidate rule
                 // may fire at all (see the resolver). Counted from `toolCalls`, which the model authored
                 // but cannot use to widen anything — a larger count only makes the resolver stricter.
@@ -8440,6 +8460,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               approvalResolutionFailed = "lookup_failed";
             }
           }
+          // Why this tool's approvals were not spent, for the card that asked (approval-outcome.ts).
+          if (approvalResolutionFailed) approvalRefusals.set(tc.function.name, approvalResolutionFailed);
           if (approvalResolutionFailed) {
             // THE RECOVERY MUST BE ONE THE SHIPPED CARD CAN PERFORM (§36/§70.1). The card has a
             // SINGLE Approve button that submits every bound fingerprint at once
@@ -8467,12 +8489,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               ...refusal, correlation_id: requestNonce }) });
             continue;
           }
+          // crm-command claims the stored row atomically; what it returns is this approval's outcome.
+          if (approvedFingerprint) approvalSpend.set(approvedFingerprint, tc.id);
           const { data: crmData, error: crmError } = await supabaseClient.functions.invoke("crm-command", {
             headers: { Authorization: authHeader },
             body: { command: { action, ...crmArgs }, idempotency_key: idempotencyKey,
               ...(approvedFingerprint ? { approved_fingerprint: approvedFingerprint } : {}) },
           });
           let crmBody: Record<string, unknown> = crmData && typeof crmData === "object" && !Array.isArray(crmData) ? crmData as Record<string, unknown> : {};
+          // The status of an ANSWERED request only (FunctionsHttpError): a relay or fetch failure's
+          // context says nothing about whether the function ran.
+          const crmStatus = (crmError as any)?.name === "FunctionsHttpError" && typeof (crmError as any)?.context?.status === "number"
+            ? (crmError as any).context.status as number : undefined;
           if (crmError) {
             const ctx = (crmError as any)?.context;
             if (ctx && typeof ctx.json === "function") { try { crmBody = await ctx.json(); } catch { /* generic failure below */ } }
@@ -8486,8 +8514,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               requires_operator_approval: true, confirm_fingerprint: crmBody.fingerprint, confirm_summary: summary,
               preview: crmBody.preview ?? null, note: "Show the Needs your OK card. Nothing changed yet. Do not call this tool again in this reply." }) });
           } else if (crmError || crmBody.ok === false) {
+            // No answer from crm-command's own code (it always writes `ok`): the request failed in
+            // transit or the platform cut it off, so the write may have committed. Say "couldn't
+            // confirm", never "nothing changed" — the card reads the flag, the model the note.
+            const unanswered = invokeOutcomeUnknown(crmError, crmBody, crmStatus);
+            // Anything else is an ANSWER, and every answer but one says nothing was applied:
+            // crm-command refuses before it executes, its executor's refusals roll back, and the
+            // one case it cannot vouch for (a lost readback or execute answer) it marks
+            // `outcome_unknown` itself. The gateway turning the call away never started it.
+            const notApplied = !unanswered && crmBody.outcome_unknown !== true;
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, ...crmBody,
-              error: crmBody.message ?? crmBody.code ?? "The CRM action could not be completed. Nothing should be claimed as changed." }) });
+              error: crmBody.message ?? crmBody.code ?? (unanswered
+                ? "The CRM action's answer never arrived, so whether it completed is not known."
+                : "The CRM action could not be completed. Nothing should be claimed as changed."),
+              ...(notApplied ? { not_applied: true } : {}),
+              ...(unanswered ? { outcome_unknown: true, note: OUTCOME_UNKNOWN_NOTE } : {}) }) });
           } else {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, ...crmBody,
               ...(action === "activity.log" ? { external_effect: false, note: "Logged internally only. No email or SMS was sent and no call was placed." } : {}) }) });
@@ -8869,11 +8910,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // The model cannot author this request field. This is not proof of a physical click;
             // the trusted stored proposal, exact scope and atomic claim define the effect.
             let approvedFingerprint: string | undefined = approvedConfirmations.has(fp) ? fp : undefined;
+            if (approvedFingerprint) approvalTokenTool.set(approvedFingerprint, tc.function.name);
             // FIX B signal (P0 containment): the operator approved proposal(s) for this tool, but this
             // re-emitted call could not be pinned to exactly one of them. Set below when the approved-set
             // lookup finds ≥1 live proposal yet resolves no single fingerprint — a genuinely ambiguous
             // approval that must end in a truthful terminal, never a fresh re-ask loop.
             let approvedSetAmbiguous = false;
+            // Which of the two the terminal below fired for, so the card names the true cause.
+            let approvedSetLookupFailed = false;
             // The card approves the stored call, not a model's byte-identical reconstruction.
             // Resolve only fingerprints the human submitted; never broaden to all pending calls.
             if (!approvedFingerprint && approvedConfirmations.size > 0 && await revalidateProposalScope()) {
@@ -8907,7 +8951,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 if (!lookupError && (candidates?.length ?? 0) <= 16) {
                   for (const row of candidates ?? []) {
                     const token = await confirmationToken(row, tc.function.name);
-                    if (token && approvedConfirmations.has(token)) matches.push({ fingerprint: token, args: row.args });
+                    if (token && approvedConfirmations.has(token)) {
+                      matches.push({ fingerprint: token, args: row.args });
+                      approvalTokenTool.set(token, tc.function.name);
+                    }
                   }
                 }
                 const exactMatches: Array<{ fingerprint: string }> = [];
@@ -8943,6 +8990,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   // dark failure that strands every approval of that tool on the terminal.
                   console.error("[paige] confirm approved-set lookup failed — failing to the honest terminal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce, message: lookupError?.message ?? null }));
                   approvedSetAmbiguous = true;
+                  approvedSetLookupFailed = true;
+                  approvalLookupFailed = true;
                 }
               } catch (lookupThrow) {
                 // A THROWN failure is the same hazard as the returned error above, and the entry
@@ -8950,6 +8999,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // §68: log it loudly (same reason) so a systematic break is never a silent dark failure.
                 console.error("[paige] confirm approved-set lookup threw — failing to the honest terminal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce, error: String(lookupThrow) }));
                 approvedSetAmbiguous = true;
+                approvedSetLookupFailed = true;
+                approvalLookupFailed = true;
               }
             }
             const approvedArgs = approvedFingerprint !== undefined
@@ -8967,6 +9018,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // genuinely cannot — the state the owner required instead of a silent re-ask loop.)
               const ambiguousApproval = approvedSetAmbiguous;
               if (ambiguousApproval) {
+                approvalRefusals.set(tc.function.name, approvedSetLookupFailed ? "lookup_failed" : "ambiguous");
                 const subjectRef = confirmIdentityValue(tc.function.name, gateArgs);
                 console.warn("[paige] confirm ambiguous-approval terminal", JSON.stringify({ tool: tc.function.name, correlation_id: requestNonce }));
                 toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
@@ -9012,6 +9064,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // through one seam rather than fifty-one per-tool edits.
             tc.function.arguments = JSON.stringify(approvedArgs);
             approvalChannel.set(tc.id, "operator_card");
+            approvalSpend.set(approvedFingerprint as string, tc.id);
           } else {
             // `auto` — the operator's standing decision in their autonomy settings, not an
             // approval given in this conversation. Recorded as what it is, so a later reader can
@@ -11964,7 +12017,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_decision_rationale: args.decision_rationale ?? null,
                 p_tenant_id: personaCtx?.tenant_id ?? null,
               });
-              if (error) throw error;
+              // One RPC: a refusal the database answered rolled it back whole (approval-outcome.ts).
+              if (error) throw refusedByDatabase(error);
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "social_post" || tc.function.name === "social_analytics" || tc.function.name === "social_accounts") {
               // Phase 0 containment. These legacy names are deliberately absent from the model's
@@ -12430,10 +12484,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             await recordPipelineRun({ thrown: err, threw: true, writeAttempted: false });
             await recordCrmRun({ thrown: err, threw: true, writeAttempted: crmWriteAttempted });
 
+            // `outcome_unknown` when the answer never arrived (a transport failure, not a refusal):
+            // the write may have happened, and the approval card must say so rather than "didn't
+            // run", with a note so Paige's words match the card. The error text itself is
+            // untouched; that is #1456's to change.
             toolResults.push({
               tool_call_id: tc.id,
               role: "tool",
-              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+              content: JSON.stringify({
+                success: false,
+                error: err instanceof Error ? err.message : "Unknown error",
+                // Only where the executor proved it (`refusedByDatabase`): nothing was applied.
+                ...((err as { not_applied?: unknown } | null)?.not_applied === true ? { not_applied: true } : {}),
+                ...(thrownOutcomeUnknown(err) ? { outcome_unknown: true, note: OUTCOME_UNKNOWN_NOTE } : {}),
+              }),
             });
           }
         } else if (tc.function.name === "list_subagents" || tc.function.name === "delegate_to_subagent") {
@@ -13512,6 +13576,65 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         heldContent.length = 0;
       };
       const discardContent = () => { heldContent.length = 0; };
+      // WHAT BECAME OF EACH APPROVAL THE OPERATOR SENT, in the order they sent them — once per turn,
+      // however the turn ends (a reply, a changed workspace, a snag), so the card that asked never
+      // has to guess (_shared/approval-outcome.ts).
+      //
+      // DIRECT, not through `emitContent`, on the same line `emitStep` sits on: every sentence
+      // comes from a fixed vocabulary and every fingerprint is one the person's own screen sent,
+      // so nothing here quotes the evidence. Holding it with a protected reply would mean a turn
+      // whose reply is withheld also hides whether the person's approved change happened, and
+      // the card would then have to guess.
+      //
+      // It never throws. It runs on the exits that carry the turn's last word (a changed workspace,
+      // a snag, an interrupted Live answer), and nothing here may cost the client the frame it needs
+      // to settle — so a failure is logged, loudly, and the exit carries on.
+      let approvalOutcomeSent = false;
+      const emitApprovalOutcome = async (controller: ReadableStreamDefaultController) => {
+        if (approvalOutcomeSent || approvedConfirmations.size === 0) return;
+        approvalOutcomeSent = true;
+        try {
+          const tokens = [...approvedConfirmations];
+          const classified = tokens.map((token) => {
+            const spentBy = approvalSpend.get(token);
+            const tool = approvalTokenTool.get(token);
+            return spentBy !== undefined
+              ? classifySpentApproval(toolResultContent.get(spentBy), { reportsOk: tool !== undefined && N8N_MANAGEMENT_TOOL_NAMES.has(tool) })
+              : classifyUnspentApproval(tool ? approvalRefusals.get(tool) : approvalLookupFailed ? "lookup_failed" : undefined);
+          });
+          // An approval this request could not use may have been used before it, by a request that did
+          // the work — "didn't run" is then true of this request and false of the change. Only the
+          // stored row can say. If the look fails, nobody knows, and the card says so.
+          let usedEarlier: (token: string) => boolean | "unknown" = () => false;
+          const unrun = tokens.filter((_, i) => classified[i].outcome === "not_run");
+          if (unrun.length) {
+            try {
+              const { data, error } = await supabase.from("paige_pending_confirmations")
+                .select("fingerprint,issued_in_request")
+                .eq("user_id", user.id)
+                .in("fingerprint", [...new Set(unrun.map((token) => token.split(":")[0]))])
+                .not("consumed_at", "is", null)
+                .lt("consumed_at", approvalRequestStartedAt);
+              if (error) throw error;
+              const rows = (data ?? []) as Array<{ fingerprint: string; issued_in_request: string | null }>;
+              usedEarlier = (token) => {
+                const [fp, issued] = token.split(":");
+                return rows.some((row) => row.fingerprint === fp && (issued === undefined || row.issued_in_request === issued));
+              };
+            } catch (e) {
+              console.error("[paige] approval outcome: could not check for an earlier use", JSON.stringify({ correlation_id: requestNonce, message: (e as { message?: string })?.message ?? String(e) }));
+              usedEarlier = () => "unknown";
+            }
+          }
+          const approvalOutcome = buildApprovalOutcome(tokens.map((token, i) => ({
+            fingerprint: token,
+            ...settleUsedEarlier(classified[i], usedEarlier(token)),
+          })));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_approval_outcome: approvalOutcome })}\n\n`));
+        } catch (e) {
+          console.error("[paige] approval outcome frame not sent", JSON.stringify({ correlation_id: requestNonce, message: (e as { message?: string })?.message ?? String(e) }));
+        }
+      };
       const finalStream = new ReadableStream({
         async start(controller) {
          // §13/§36 — a client was named but could NOT be authorized, so this turn ran with no
@@ -13618,6 +13741,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
 
             const { toolResults, executed, scopeInvalidated } = await executeToolCalls(toolCalls, queuedApprovals);
+            // An approved call its card will report as "couldn't confirm" tells the model the same,
+            // before the model reads it, so Paige never says "that failed" beside a card that says
+            // check first (approval-outcome.ts).
+            if (approvalSpend.size) {
+              const spentBy = new Map([...approvalSpend].map(([token, callId]) => [callId, token]));
+              for (const r of toolResults) {
+                const token = spentBy.get(r.tool_call_id);
+                if (token === undefined) continue;
+                const tool = approvalTokenTool.get(token);
+                r.content = sayWhatTheCardSays(String(r.content ?? ""), { reportsOk: tool !== undefined && N8N_MANAGEMENT_TOOL_NAMES.has(tool) });
+              }
+            }
+            for (const r of toolResults) toolResultContent.set(r.tool_call_id, String(r.content ?? ""));
             if (scopeInvalidated) {
               tenantKnowledgeScopeInvalidated = true;
               forcedTermination = true;
@@ -13713,6 +13849,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // already finished is saved" is true whether one tool ran or none did.
           if (tenantKnowledgeScopeInvalidated || !(await revalidateTenantKnowledgeScope())) {
             pendingTenantKbTelemetry = null;
+            // "Anything I'd already finished is saved" — and the card says which of the approvals that was.
+            await emitApprovalOutcome(controller);
             const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -13818,6 +13956,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // comes from a fixed vocabulary and its detail is a count, so it names an activity
           // without ever quoting the evidence.
           if (queuedApprovals.length) emitContent(controller, enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
+          // What became of each approval the operator sent (see `emitApprovalOutcome`).
+          await emitApprovalOutcome(controller);
           for (const c of confirmTrace) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
           for (const result of crmResultTrace) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_crm_result: result })}\n\n`));
           // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
@@ -14000,6 +14140,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                  await persistAssistantTurn(finalAssistantText, interruptedMeta);
                } catch { console.error("[paige] partial Live answer persistence failed"); }
              }
+             // What became of the approvals, then the error frame the Live client settles on — each
+             // on its own, so the one can never cost the client the other.
+             await emitApprovalOutcome(controller);
              try {
                controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_live_error: "answer_interrupted" })}\n\n`));
              } catch { /* caller already left */ }
@@ -14009,6 +14152,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
            // with a truncated stream — emit a clean fallback reply and a [DONE].
            console.error("[paige] live reasoning stream failed:", (e as Error)?.message);
            const snag = "I hit a snag finishing that — mind trying again?";
+           // Before the invitation to try again: the card says what already ran, so trying again is
+           // never the way something happens twice.
+           await emitApprovalOutcome(controller);
            try {
              controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: snag } }] })}\n\n`));
              controller.enqueue(enc.encode("data: [DONE]\n\n"));

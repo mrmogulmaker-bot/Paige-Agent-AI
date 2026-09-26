@@ -238,6 +238,20 @@ describe("the executor error that reaches Paige", () => {
     expect(INDEX.match(/executorFailureSpeech\(code, detail, "refused"\)/g) ?? []).toHaveLength(2);
   });
 
+  it("never says nothing was created when the execute call's answer was lost", () => {
+    // No database code means the answer never came back and the command may have committed: the
+    // same code for the audit row, but the lost-answer speech, never the refusal that says nothing
+    // was created. Checked before the setup refusals and the generic refusal, which assume an answer.
+    expect(INDEX).toMatch(/import\s*\{\s*databaseAnswered\s*\}\s*from\s*["']\.\.\/_shared\/approval-outcome\.ts["']/);
+    const lost = INDEX.indexOf("if (!databaseAnswered(commandError)) {");
+    expect(lost).toBeGreaterThan(INDEX.indexOf('parseExecutorError(commandError.message, "CRM_COMMAND_FAILED")'));
+    expect(lost).toBeLessThan(INDEX.indexOf('if (code === "CRM_COMPANY_OWNER_SETUP_REQUIRED")'));
+    expect(INDEX.slice(lost, lost + 300)).toContain('executorFailureSpeech(code, [], "lost")');
+    // A call that returned without an error committed; an answer nobody can read is not a refusal.
+    expect(INDEX).toContain('object(result) ?? { ok: false, outcome: "failed", outcome_unknown: true }');
+    expect(executorFailureSpeech("CRM_COMMAND_FAILED", [], "lost").message).toBeUndefined();
+  });
+
   it("keeps the two hand-written setup refusals reachable", () => {
     // Both are bare codes, so the head is the whole message and these equality branches still
     // match exactly as they did before the split.

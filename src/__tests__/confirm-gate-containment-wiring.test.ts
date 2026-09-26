@@ -185,9 +185,15 @@ describe("the write trail skips only what declares it never ran", () => {
   });
 
   it("no other edge code produces the marker", () => {
-    const producers = execSync("grep -rl 'refused_before_run' supabase/functions --include=*.ts", { encoding: "utf8" })
+    // One producer; everything else that names it only reads it: the audit skip, and the approval
+    // card's outcome (approval-outcome.ts, which reports such a call as not run).
+    const producers = execSync("grep -rlE 'refused_before_run: ?true' supabase/functions --include=*.ts", { encoding: "utf8" })
       .trim().split("\n").sort();
-    expect(producers).toEqual([
+    expect(producers).toEqual(["supabase/functions/_shared/confirm-fingerprint.ts"]);
+    const mentions = execSync("grep -rl 'refused_before_run' supabase/functions --include=*.ts", { encoding: "utf8" })
+      .trim().split("\n").sort();
+    expect(mentions).toEqual([
+      "supabase/functions/_shared/approval-outcome.ts",
       "supabase/functions/_shared/confirm-fingerprint.ts",
       "supabase/functions/paige-ai-chat/index.ts",
     ]);
