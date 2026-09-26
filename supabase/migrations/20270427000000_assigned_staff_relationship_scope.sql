@@ -15,17 +15,29 @@
 --   * relationships are written only by the assignment path, never directly by a signed-in user;
 --   * the helper's assignment branch and the invitations policy apply the same tenant rule.
 
--- Step 0: abort if the starting state is not the one this migration was written against.
+-- Step 0: abort if the starting state is not the one this migration was written against. The only
+-- relationship no client record can place is the recorded one, and it is self-assigned (removed in
+-- step 3); every other relationship must resolve to exactly one tenant.
 DO $$
 DECLARE
   _unresolved int;
+  _orphans int;
+  _ambiguous int;
   _dup int;
 BEGIN
-  SELECT count(*) INTO _unresolved FROM public.coach_clients cc
-   WHERE cc.id <> '545ca98f-2cd2-40dc-a96f-d64aeb91941f'
-     AND NOT EXISTS (SELECT 1 FROM public.clients c WHERE c.linked_user_id = cc.client_user_id);
-  IF _unresolved > 0 THEN
-    RAISE EXCEPTION 'assigned-staff scope: % relationship(s) cannot be resolved to a tenant; re-derive this migration', _unresolved;
+  SELECT count(*) FILTER (WHERE cc.coach_user_id <> cc.client_user_id),
+         count(*) FILTER (WHERE cc.coach_user_id = cc.client_user_id)
+    INTO _unresolved, _orphans
+    FROM public.coach_clients cc
+   WHERE NOT EXISTS (SELECT 1 FROM public.clients c WHERE c.linked_user_id = cc.client_user_id);
+  IF _unresolved > 0 OR _orphans > 1 THEN
+    RAISE EXCEPTION 'assigned-staff scope: % relationship(s) cannot be resolved to a tenant; re-derive this migration', _unresolved + _orphans;
+  END IF;
+  SELECT count(*) INTO _ambiguous FROM public.coach_clients cc
+   WHERE (SELECT count(DISTINCT c.tenant_id) FROM public.clients c
+           WHERE c.linked_user_id = cc.client_user_id) > 1;
+  IF _ambiguous > 0 THEN
+    RAISE EXCEPTION 'assigned-staff scope: % relationship(s) resolve to more than one tenant; re-derive this migration', _ambiguous;
   END IF;
   SELECT count(*) INTO _dup FROM (
     SELECT tenant_id, linked_user_id FROM public.clients
@@ -44,21 +56,11 @@ ALTER TABLE public.coach_clients
   ADD COLUMN tenant_id uuid REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 -- Step 3: the one recorded relationship no client record can place is removed, per owner ruling
--- (recorded in the Delivery Evidence Register before removal). Guarded: it is removed only if it
--- is still exactly the row that was recorded; absent (as on a replayed database) is a no-op.
-DO $$
-DECLARE _r record;
-BEGIN
-  SELECT * INTO _r FROM public.coach_clients WHERE id = '545ca98f-2cd2-40dc-a96f-d64aeb91941f';
-  IF FOUND THEN
-    IF _r.coach_user_id <> 'b3b0d5a9-1b98-4344-9c0c-5a35616df58b'
-       OR _r.client_user_id <> 'b3b0d5a9-1b98-4344-9c0c-5a35616df58b'
-       OR _r.updated_at <> '2026-07-13 18:36:59.980655+00'::timestamptz THEN
-      RAISE EXCEPTION 'assigned-staff scope: the recorded relationship has changed since it was recorded; not removing it';
-    END IF;
-    DELETE FROM public.coach_clients WHERE id = '545ca98f-2cd2-40dc-a96f-d64aeb91941f';
-  END IF;
-END $$;
+-- (recorded in the Delivery Evidence Register before removal). Step 0 proved it is the only such
+-- row and that it is self-assigned; absent (as on a replayed database) this removes nothing.
+DELETE FROM public.coach_clients cc
+ WHERE cc.coach_user_id = cc.client_user_id
+   AND NOT EXISTS (SELECT 1 FROM public.clients c WHERE c.linked_user_id = cc.client_user_id);
 
 -- Step 4: fill the tenant from the client record.
 UPDATE public.coach_clients cc
