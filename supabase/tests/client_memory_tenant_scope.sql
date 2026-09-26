@@ -17,6 +17,7 @@ SELECT plan(12);
 -- Production grants `authenticated` these privileges; a schema replayed from migrations does not.
 -- Reproduced inside the rolled-back transaction so the reads exercise the policies.
 GRANT SELECT, INSERT, UPDATE ON public.client_memory TO authenticated;
+GRANT SELECT ON public.clients, public.tenant_members, public.coach_clients TO authenticated;
 
 DO $$
 DECLARE
