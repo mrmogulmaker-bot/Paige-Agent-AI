@@ -4,6 +4,7 @@ import { z } from "https://esm.sh/zod@3.22.4";
 import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { decideGovernedExecution } from "../_shared/paige-spine/governedExecution.ts";
 import { CRM_ACTION_CAPABILITY as ACTION_CAPABILITY, crmApprovalSubject, type CrmAction } from "../_shared/crm-command/catalog.ts";
+import { parseExecutorError, executorFailureSpeech } from "../_shared/crm-command/executor-error.ts";
 import { canonicalAppUrl, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
@@ -282,15 +283,17 @@ serve(async (req) => {
     const cachedResult = object(cachedData);
     if (!cachedError && cachedResult) return successfulResultResponse(cachedResult, body.command.action);
     if (cachedError) {
-      const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(cachedError.message ?? "")
-        ? cachedError.message
-        : "CRM_READBACK_UNAVAILABLE";
+      const { code, detail } = parseExecutorError(cachedError.message, "CRM_READBACK_UNAVAILABLE");
       const status = code === "CRM_IDEMPOTENCY_REUSE" || code === "CRM_ACTIVE_ACCOUNT_CHANGED"
         ? 409
         : code === "CRM_FORBIDDEN"
         ? 403
         : 503;
-      return response(status, { ok: false, outcome: "refused", code });
+      return response(status, {
+        ok: false, outcome: "refused", code,
+        ...(detail.length ? { detail } : {}),
+        ...executorFailureSpeech(code, detail, "unproven"),
+      });
     }
   }
 
@@ -416,8 +419,12 @@ serve(async (req) => {
       });
       preview = object(previewData);
       if (previewError || !preview) {
-        const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(previewError?.message ?? "") ? previewError!.message : "CRM_PREVIEW_FAILED";
-        return response(code.includes("VERSION_CONFLICT") ? 409 : 422, { ok: false, outcome: "failed", code });
+        const { code, detail } = parseExecutorError(previewError?.message, "CRM_PREVIEW_FAILED");
+        return response(code.includes("VERSION_CONFLICT") ? 409 : 422, {
+          ok: false, outcome: "failed", code,
+          ...(detail.length ? { detail } : {}),
+          ...executorFailureSpeech(code, detail, "refused"),
+        });
       }
       if (preview.ok === true && preview.outcome === "succeeded") {
         return successfulResultResponse(preview, body.command.action);
@@ -521,10 +528,14 @@ serve(async (req) => {
     _idempotency_key: decidedKey,
   });
   if (commandError) {
-    const code = /^(CRM|PIPELINE)_[A-Z0-9_:,-]+$/.test(commandError.message ?? "") ? commandError.message : "CRM_COMMAND_FAILED";
+    const { code, detail } = parseExecutorError(commandError.message, "CRM_COMMAND_FAILED");
     if (code === "CRM_COMPANY_OWNER_SETUP_REQUIRED") return response(409, { ok: false, outcome: "setup_required", code, message: "This CRM-only contact needs an active tenant owner before a company can be created. Restore or assign the workspace owner, then retry." });
     if (code === "CRM_TASK_CONTACT_LINK_UNAVAILABLE") return response(409, { ok: false, outcome: "setup_required", code, message: "The canonical task model does not yet own a contact relationship. Create the task without a contact link, or use a supported company/deal link." });
-    return response(code.includes("VERSION_CONFLICT") ? 409 : 422, { ok: false, outcome: "failed", code });
+    return response(code.includes("VERSION_CONFLICT") ? 409 : 422, {
+      ok: false, outcome: "failed", code,
+      ...(detail.length ? { detail } : {}),
+      ...executorFailureSpeech(code, detail, "refused"),
+    });
   }
 
   const resultObject = object(result) ?? { ok: false, outcome: "failed" };

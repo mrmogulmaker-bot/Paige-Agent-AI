@@ -1,5 +1,6 @@
 import { confirmFingerprint } from "../confirm-fingerprint.ts";
 import { classifyAction } from "../action-risk.ts";
+import { CRM_PATCH_FIELDS } from "./patch-fields.generated.ts";
 
 export const CRM_ACTION_CAPABILITY = {
   "contact.create": "crm_create_contact", "contact.update": "crm_update_contact",
@@ -77,6 +78,10 @@ const properties = {
   expected_version: { type: "integer", minimum: 1 }, expected_target_version: { type: "integer", minimum: 1 },
   target_ids: { type: "array", minItems: 1, maxItems: 200, items: { type: "string" } },
   resolutions: { type: "object", additionalProperties: { type: "string", enum: ["survivor", "loser"] } },
+  // The OPEN patch, kept only for the actions whose database branch enforces no allowlist —
+  // `task.assign`, `task.reschedule` and `activity.log` read specific keys and ignore the rest, so
+  // closing them here would invent a constraint prod does not have. Every action that DOES carry an
+  // allowlist gets a closed, derived schema instead; see `patchSchemaFor` below.
   patch: { type: "object", description: "Only fields the operator asked to change." },
   title: { type: "string" }, value_cents: { type: "integer", minimum: 0 }, currency: { type: "string" },
   expected_close_date: { type: "string" }, offer_type: { type: "string" }, tags: { type: "array", items: { type: "string" } },
@@ -123,6 +128,43 @@ export const CRM_ACTION_LABEL: Record<CrmAction, string> = {
   "deal.reopen":"reopen a deal", "deal.delete":"permanently delete a deal",
 };
 
+/**
+ * The `patch` schema for one action, built from the database's OWN allowlist.
+ *
+ * On 2026-09-25 an approved contact create reached the executor and threw
+ * `CRM_PATCH_FIELDS_INVALID:company_name,zip`. Paige had sent `company_name` and `zip`; the
+ * database accepts `entity_name` and `zip_code`. The schema above described `patch` as a bare
+ * `{ type: "object" }`, so she had no way to learn the real names and used the ones a person would.
+ *
+ * The field names below are GENERATED from the `k not in (...)` allowlist inside the plpgsql
+ * function that enforces them (`scripts/ci/crm-patch-field-gen.mjs`), never hand-typed here, and
+ * `npm run lint:crm-patch-fields` fails if the two drift apart. The seven allowlists are NOT one
+ * list — `contact.create` takes `notes` where `contact.update` takes `current_notes`, and
+ * `task.create` takes six fields `task.update` rejects — so each action is looked up separately.
+ *
+ * NAMES ONLY, DELIBERATELY. The allowlist yields field names, not types, so no `type` is asserted
+ * per field. Guessing types here would put a constraint in front of the database that the database
+ * does not impose, and a wrong guess would refuse a legitimate patch at the schema boundary — a
+ * worse failure than the one being fixed, because it would be invisible to the executor's errors.
+ *
+ * An action with no entry keeps the open patch: its database branch has no allowlist at all.
+ */
+function patchSchemaFor(action: CrmAction) {
+  const fields = CRM_PATCH_FIELDS[action];
+  if (!fields?.length) return properties.patch;
+  return {
+    type: "object",
+    description:
+      "Only fields the operator asked to change. These exact field names are the complete set the "
+      + "server accepts for this action; any other key is refused. Map what the operator said onto "
+      + "these names rather than inventing one.",
+    properties: Object.fromEntries(
+      fields.map((field) => [field.name, field.description ? { description: field.description } : {}]),
+    ),
+    additionalProperties: false,
+  };
+}
+
 export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmAction, CrmCapability][]).map(([action, capability]) => ({
   type: "function",
   function: {
@@ -132,6 +174,7 @@ export const CRM_COMMAND_TOOLS = (Object.entries(CRM_ACTION_CAPABILITY) as [CrmA
       type: "object",
       properties: {
         ...properties,
+        patch: patchSchemaFor(action),
         confirm: {
           type: "boolean",
           description: classifyAction(capability) === "high"

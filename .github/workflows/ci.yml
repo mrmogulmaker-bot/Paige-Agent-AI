@@ -270,6 +270,33 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tool-catalogue:test
 
+      # The patch field list the model sees is GENERATED from the database allowlist. On 2026-09-25
+      # an approved contact create threw `CRM_PATCH_FIELDS_INVALID:company_name,zip` on production:
+      # Paige sent `company_name` and `zip`, the executor accepts `entity_name` and `zip_code`, and
+      # the tool schema described `patch` as a bare `{ type: "object" }` — so she had no way to know
+      # the real names and used the ones a person would say. The seven allowlists live in two
+      # plpgsql functions and are NOT identical to each other (`contact.create` takes `notes`,
+      # `contact.update` takes `current_notes`), so a single hardcoded map gets four of the seven
+      # wrong. This re-derives all seven from the migrations that define those functions and fails
+      # on any difference, so a field added or renamed in the database cannot leave the schema
+      # quietly stale. No secrets and no network: it runs on fork PRs too. It is deliberately only
+      # HALF the guard — it reads migration TEXT, which means re-implementing the "newest
+      # definition wins" rule Postgres already owns. The other half,
+      # `supabase/tests/crm_patch_fields_match_database.sql`, asks a real database via
+      # pg_get_functiondef() in the `paige-spine-contract` database-contract job. Both artifacts
+      # are generated in one pass, so they cannot disagree without one of the two going red.
+      - name: CRM patch schema still matches the database allowlist
+        if: ${{ !cancelled() }}
+        run: npm run lint:crm-patch-fields
+
+      # ...and proof the guard BITES. Reinstates the original defect (`entity_name` renamed back to
+      # `company_name`) and asserts the check goes red and names the exact delta, plus the cases a
+      # green-only check would miss: an eighth allowlist appearing with no action mapped to it, an
+      # earlier-sorting migration shadowing a later one, and an allowlist escaping its own branch.
+      - name: ...and the CRM patch guard fails when the database drifts
+        if: ${{ !cancelled() }}
+        run: npm run lint:crm-patch-fields:test
+
       # Every reason `tenant_comms_readiness()` can BLOCK a tenant for must have a
       # next step on the surface that renders it. The two halves live in a SQL
       # migration and a React file, reviewed at different times by different eyes,

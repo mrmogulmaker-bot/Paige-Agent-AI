@@ -49,6 +49,8 @@
     "pack:keys": "node scripts/pack/key-xref.mjs",
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
+    "lint:crm-patch-fields": "node scripts/ci/crm-patch-field-gen.mjs",
+    "lint:crm-patch-fields:test": "node scripts/ci/crm-patch-field-gen.mjs --self-test",
     "lint:tool-catalogue:test": "node scripts/ci/tool-catalogue-lint.mjs --self-test",
     "lint:action-risk": "node scripts/ci/action-risk-lint.mjs",
     "lint:write-targets": "node scripts/ci/write-target-lint.mjs",
