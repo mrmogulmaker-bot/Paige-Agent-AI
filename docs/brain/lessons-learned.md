@@ -317,8 +317,11 @@ real call shapes so the assertion is about resolution rather than about existenc
   forgetting the rule. The lane attached "wait" to the CI checks it was already looking at, and "the
   reviews" were not on that checklist. Each occurrence has come right after a long evidence-gathering
   step that felt like the last gate. **The durable fix is mechanical, not another paragraph.** A merge
-  helper, or a required check, should refuse while the Codex summary comment on the exact head reads
-  `Running`, or while no requested review exists. §71's honest note already names this pattern.
+  helper, or a required check, should refuse unless **both** reviews have positively *completed* on the
+  exact head: the auto-triggered one and a requested one. A review that is absent, failed or
+  cancelled counts as not done, never as clean. Blocking only on a `Running` status would pass all
+  three. The Codex summary comment is not the evidence. On #1468 and #1470 it replaced the
+  auto-triggered row with the manual request, so the guard has to read the review records themselves. §71's honest note already names this pattern.
 
 ## Two pacing rules, from the same lane (2026-09-23)
 
