@@ -277,6 +277,10 @@ jobs:
       # assignee, suspend/restore on membership change, and no direct writes outside assignment.
       - run: supabase test db supabase/tests/assigned_staff_relationship_scope.sql
         if: ${{ !cancelled() }}
+      # Client memory belongs to exactly one tenant: filled from the client record or the writer's
+      # active tenant, refused otherwise, fixed once written, and visible only within that tenant.
+      - run: supabase test db supabase/tests/client_memory_tenant_scope.sql
+        if: ${{ !cancelled() }}
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-legacy-shape-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-tenant-shaped-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # Trusted task↔thread link — RLS SET-ROLE proof that the edge's server-side validation read
