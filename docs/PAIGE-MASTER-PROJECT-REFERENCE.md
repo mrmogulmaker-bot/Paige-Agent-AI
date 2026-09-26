@@ -736,6 +736,10 @@ owner in the same commit. Enforced by `npm run lint:integration-registry` (CI). 
 `config-registry.md` (wiring names/IDs), `provider-result-contract.md` (runtime per-tenant state into
 Systems Check), and the Spine `registry.ts` / `tenant_mcp_connections` code registries (§18).
 
+### Roles and titles — the permission model (owner ruling, 2026-09-26)
+
+**Roles authorize; titles describe.** Tenant permissions are exactly **owner · admin · member**, a set that does not grow, and no tenant defines its own permission set. **Coach holds no power anywhere.** It survives only as a **title**, and the capability it carried becomes *a member reaches the clients assigned to them* (assignment is a data relationship). A title never enters a permission decision, and activity records keep the title as it was at the time. PAIGE treats the platform role as *"can they?"* and the title as *"who are they and what do they do?"*. **Current platform truth is unchanged by this entry:** coach checks remain in code until the removal slices ship, and each slice's closeout updates §4. Authoritative: `docs/doctrine/role-taxonomy-and-matrix.md` §0; decision log 2026-09-26.
+
 ### Release Governance & Customer Update Policy (MANDATORY)
 
 **`docs/doctrine/release-governance-and-customer-update-policy.md`** is the canonical release contract.
