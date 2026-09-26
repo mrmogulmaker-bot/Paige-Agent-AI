@@ -167,56 +167,56 @@ SELECT is((SELECT count(*)::int FROM public.credit_report_uploads
   'uploads take their tenant from the maker''s active tenant or their single client record');
 
 -- 14. With no client record, no signed-in maker and nobody the upload can belong to, it is refused.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e03', 'a5520000-0000-0000-0000-000000000e03', 'n.pdf', 'a5520000-0000-0000-0000-000000000e03/cr-n.pdf')$q$,
-  '23514', NULL, 'an upload with no resolvable tenant is refused');
+  'UPLOAD_TENANT_UNRESOLVED:%', 'an upload with no resolvable tenant is refused');
 
 -- 15. A tenant that is not the client record's is refused.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (tenant_id, user_id, uploaded_by, client_id, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-00000000000b', 'a5520000-0000-0000-0000-000000000e02',
           'a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-00000000c1e2', 'm.pdf', 'a5520000-0000-0000-0000-000000000e02/cr-m.pdf')$q$,
-  '23514', NULL, 'an upload cannot name a tenant other than its client record''s');
+  'UPLOAD_TENANT_MISMATCH:%', 'an upload cannot name a tenant other than its client record''s');
 
 -- 16. An upload about someone who does not belong to the named tenant is refused.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (tenant_id, user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-00000000000b', 'a5520000-0000-0000-0000-0000000005a1',
           'a5520000-0000-0000-0000-0000000005a1', 'f.pdf', 'a5520000-0000-0000-0000-0000000005a1/cr-f.pdf')$q$,
-  '23514', NULL, 'an upload cannot be placed in a tenant its subject does not belong to');
+  'UPLOAD_SUBJECT_NOT_IN_TENANT:%', 'an upload cannot be placed in a tenant its subject does not belong to');
 
 -- 17. The tenant cannot be changed after the fact.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   UPDATE public.credit_report_uploads SET tenant_id = 'a5520000-0000-0000-0000-00000000000b'
    WHERE file_path LIKE '%/cr-u1.pdf'$q$,
-  '23514', NULL, 'an upload''s tenant cannot be changed');
+  'UPLOAD_TENANT_IMMUTABLE:%', 'an upload''s tenant cannot be changed');
 
 -- 18. A signed-in maker cannot place an upload in a tenant they do not act in. The subject belongs
 --     to B (as a client); only the maker does not.
 SELECT set_config('request.jwt.claims', '{"sub":"a5520000-0000-0000-0000-0000000005a1","role":"authenticated"}', true);
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (tenant_id, user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-00000000000b', 'a5520000-0000-0000-0000-000000000e01',
           'a5520000-0000-0000-0000-0000000005a1', 's.pdf', 'a5520000-0000-0000-0000-000000000e01/cr-s.pdf')$q$,
-  '23514', NULL, 'a signed-in maker cannot stamp an upload with a tenant they do not act in');
+  'UPLOAD_MAKER_NOT_IN_TENANT:%', 'a signed-in maker cannot stamp an upload with a tenant they do not act in');
 SELECT set_config('request.jwt.claims', '', true);
 
 -- 19. A record can only name a file in its subject's own folder.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-000000000e02', 'p.pdf',
           'a5520000-0000-0000-0000-000000000e01/cr-foreign.pdf')$q$,
-  '23514', NULL, 'a record cannot name a file outside its subject''s folder');
+  'UPLOAD_FILE_OUTSIDE_SUBJECT:%', 'a record cannot name a file outside its subject''s folder');
 
 -- 20. A record's file cannot be repointed after the fact.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   UPDATE public.credit_report_uploads SET file_path = 'a5520000-0000-0000-0000-000000000e01/cr-other.pdf'
    WHERE file_path LIKE '%/cr-u1.pdf'$q$,
-  '23514', NULL, 'a record''s file cannot be changed');
+  'UPLOAD_FILE_IMMUTABLE:%', 'a record''s file cannot be changed');
 
 -- 21. One file, one record.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-000000000e02', 'd.pdf',
           'a5520000-0000-0000-0000-000000000e02/cr-u2.pdf')$q$,
@@ -224,11 +224,11 @@ SELECT throws_ok($q$
 
 -- 22. Staff cannot adopt a stored file that no record stands behind.
 SELECT set_config('request.jwt.claims', '{"sub":"a5520000-0000-0000-0000-0000000005a1","role":"authenticated"}', true);
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-0000000005a1', 'o.pdf',
           'a5520000-0000-0000-0000-000000000e02/cr-orphan.pdf')$q$,
-  '23514', NULL, 'staff cannot adopt an existing file that no record stands behind');
+  'UPLOAD_FILE_ALREADY_STORED:%', 'staff cannot adopt an existing file that no record stands behind');
 SELECT set_config('request.jwt.claims', '', true);
 
 -- 23. A record naming a client record is about that client and no one else.
@@ -236,7 +236,7 @@ SELECT throws_ok($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, client_id, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e03', 'a5520000-0000-0000-0000-0000000000a1',
           'a5520000-0000-0000-0000-00000000c1e2', 'c.pdf', 'a5520000-0000-0000-0000-000000000e03/cr-c.pdf')$q$,
-  '23514', NULL, 'a record naming a client record must be about that client');
+  'UPLOAD_CLIENT_MISMATCH:%', 'a record naming a client record must be about that client');
 
 -- 24. Removing a client record detaches its uploads and keeps their tenant.
 INSERT INTO public.credit_report_uploads (user_id, uploaded_by, client_id, file_name, file_path)
