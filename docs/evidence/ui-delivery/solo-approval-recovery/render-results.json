@@ -278,6 +278,12 @@
       "cards": 7,
       "narrowOverflow": [],
       "pageScrollsSideways": false,
+      "reflow320": {
+        "overflowingCards": [
+          "Needs your OK"
+        ],
+        "pageScrollsSideways": false
+      },
       "narrowShots": [
         "side-panel-needs-your-ok-light.png",
         "side-panel-running-light.png",
@@ -565,6 +571,12 @@
       "cards": 7,
       "narrowOverflow": [],
       "pageScrollsSideways": false,
+      "reflow320": {
+        "overflowingCards": [
+          "Needs your OK"
+        ],
+        "pageScrollsSideways": false
+      },
       "narrowShots": [
         "side-panel-needs-your-ok-dark.png",
         "side-panel-running-dark.png",

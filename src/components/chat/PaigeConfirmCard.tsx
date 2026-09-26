@@ -362,8 +362,16 @@ export function PaigeConfirmCard(props: PaigeConfirmCardProps) {
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
               {recovery && (
                 <>
-                  <Button size="sm" variant="outline" onClick={recovery.onPress} disabled={recovery.disabled}>
-                    <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden />
+                  {/* Its label may wrap: at 320px reflow the text column is narrower than the
+                      button, and a control that runs off the card is one a person cannot see. */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={recovery.onPress}
+                    disabled={recovery.disabled}
+                    className="h-auto min-h-9 max-w-full whitespace-normal py-1.5 text-left"
+                  >
+                    <RotateCcw className="mr-1.5 h-4 w-4 shrink-0" aria-hidden />
                     Ask Paige again
                   </Button>
                   {cardState === "mixed" && (

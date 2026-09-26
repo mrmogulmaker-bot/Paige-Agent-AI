@@ -144,6 +144,15 @@ try {
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
       .map((el) => el.closest("[data-scene]")?.getAttribute("data-scene")));
     r.pageScrollsSideways = await np.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    // WCAG 1.4.10 reflow is judged at 320 CSS px: nothing may need a sideways scroll there either.
+    await np.setViewportSize({ width: 320, height: 900 });
+    r.reflow320 = await np.evaluate(() => ({
+      overflowingCards: [...document.querySelectorAll('[role="group"], [data-paige-crm-result]')]
+        .filter((el) => el.scrollWidth > el.clientWidth + 1)
+        .map((el) => el.closest("[data-scene]")?.getAttribute("data-scene")),
+      pageScrollsSideways: document.documentElement.scrollWidth > window.innerWidth,
+    }));
+    await np.setViewportSize({ width: 420, height: 900 });
     r.narrowShots = [];
     for (const card of await np.$$('[data-scene] [role="group"]')) {
       const scene = await card.evaluate((el) => el.closest("[data-scene]").getAttribute("data-scene"));
