@@ -23,7 +23,7 @@ serve(async (req) => {
     // Find tasks due in next 24h, not yet reminded, not completed/cancelled
     const { data: tasks, error: queryError } = await supabase
       .from("tasks")
-      .select("id, user_id, title, due_date, status")
+      .select("id, user_id, tenant_id, title, due_date, status")
       .eq("reminder_sent", false)
       .not("status", "in", "(completed,cancelled)")
       .gte("due_date", now.toISOString())
@@ -43,6 +43,7 @@ serve(async (req) => {
 
         await supabase.functions.invoke("send-push-notification", {
           body: {
+            tenant_id: task.tenant_id,
             user_id: task.user_id,
             category: "task_reminders",
             title: "Task Due Soon",
