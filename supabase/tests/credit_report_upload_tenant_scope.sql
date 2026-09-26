@@ -169,21 +169,21 @@ SELECT is((SELECT count(*)::int FROM public.credit_report_uploads
 -- 14. With no client record, no signed-in maker and nobody the upload can belong to, it is refused.
 SELECT throws_ok($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
-  VALUES ('a5520000-0000-0000-0000-000000000e03', 'a5520000-0000-0000-0000-000000000e03', 'n.pdf', 'z/cr-n.pdf')$q$,
+  VALUES ('a5520000-0000-0000-0000-000000000e03', 'a5520000-0000-0000-0000-000000000e03', 'n.pdf', 'a5520000-0000-0000-0000-000000000e03/cr-n.pdf')$q$,
   '23514', NULL, 'an upload with no resolvable tenant is refused');
 
 -- 15. A tenant that is not the client record's is refused.
 SELECT throws_ok($q$
   INSERT INTO public.credit_report_uploads (tenant_id, user_id, uploaded_by, client_id, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-00000000000b', 'a5520000-0000-0000-0000-000000000e02',
-          'a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-00000000c1e2', 'm.pdf', 'y/cr-m.pdf')$q$,
+          'a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-00000000c1e2', 'm.pdf', 'a5520000-0000-0000-0000-000000000e02/cr-m.pdf')$q$,
   '23514', NULL, 'an upload cannot name a tenant other than its client record''s');
 
 -- 16. An upload about someone who does not belong to the named tenant is refused.
 SELECT throws_ok($q$
   INSERT INTO public.credit_report_uploads (tenant_id, user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-00000000000b', 'a5520000-0000-0000-0000-0000000005a1',
-          'a5520000-0000-0000-0000-0000000005a1', 'f.pdf', 's/cr-f.pdf')$q$,
+          'a5520000-0000-0000-0000-0000000005a1', 'f.pdf', 'a5520000-0000-0000-0000-0000000005a1/cr-f.pdf')$q$,
   '23514', NULL, 'an upload cannot be placed in a tenant its subject does not belong to');
 
 -- 17. The tenant cannot be changed after the fact.
@@ -198,7 +198,7 @@ SELECT set_config('request.jwt.claims', '{"sub":"a5520000-0000-0000-0000-0000000
 SELECT throws_ok($q$
   INSERT INTO public.credit_report_uploads (tenant_id, user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-00000000000b', 'a5520000-0000-0000-0000-000000000e01',
-          'a5520000-0000-0000-0000-0000000005a1', 's.pdf', 'x/cr-s.pdf')$q$,
+          'a5520000-0000-0000-0000-0000000005a1', 's.pdf', 'a5520000-0000-0000-0000-000000000e01/cr-s.pdf')$q$,
   '23514', NULL, 'a signed-in maker cannot stamp an upload with a tenant they do not act in');
 SELECT set_config('request.jwt.claims', '', true);
 
