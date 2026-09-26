@@ -188,9 +188,12 @@ export function executorFailureSpeech(
   code: string,
   detail: string[],
   effect: "refused" | "unproven",
-): { message?: string; note: string } {
+): { message?: string; note: string; outcome_unknown?: true } {
   if (effect === "unproven") {
     return {
+      // The same fact as data, for the approval card: the chat reads this flag, never the prose,
+      // and reports the approval as "couldn't confirm" instead of "didn't go through".
+      outcome_unknown: true,
       note:
         "Say this to the operator in ONE plain line: nothing ran just now, you could not confirm what happened to the earlier attempt, and they should check the record before asking for it again. Do NOT claim anything was created or changed, do NOT claim it failed outright, do NOT read the code out to them, and do NOT call this tool again in this reply.",
     };
