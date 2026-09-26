@@ -118,6 +118,10 @@ SELECT is((SELECT count(*)::int FROM pg_policy
   'no policy lets a signed-in user write relationships directly');
 
 -- 14–15. An invitation is visible to an assignee only within the assignment's tenant.
+-- The invitations policy also requires the global role; membership changes above may have synced it
+-- away, so it is re-asserted here to keep this block about tenant scope and nothing else.
+INSERT INTO public.user_roles (user_id, role) VALUES ('a5500000-0000-0000-0000-0000000005a1', 'coach')
+  ON CONFLICT DO NOTHING;
 INSERT INTO public.invitations (email, invited_by, tenant_id) VALUES
   ('as-client-x@example.test', 'a5500000-0000-0000-0000-0000000005a1', 'a5500000-0000-0000-0000-00000000000a'),
   ('as-client-x@example.test', 'a5500000-0000-0000-0000-0000000005b1', 'a5500000-0000-0000-0000-00000000000b');
