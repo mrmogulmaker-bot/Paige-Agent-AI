@@ -110,14 +110,21 @@ describe("the refusal tells the truth in words a person can act on (§13/§36)",
     expect(refusal).toContain("Nothing was created, changed or sent.");
   });
 
-  it("names a recovery the SHIPPED card can actually perform (§36/§70.1)", () => {
+  it("names a recovery the interface actually offers in the state it is spoken in (§36/§70.1)", () => {
     // PaigeConfirmCard has ONE Approve button that submits every bound fingerprint at once —
     // no per-row control, no checkbox, no slice. So "approve them one at a time" instructed the
     // operator to do something the interface does not offer, then blamed them for the wall.
-    // "Not now" genuinely clears these rows (cancelConfirmations has a CRM branch).
-    expect(refusal).toContain("press Not now to clear them");
+    //
+    // CORRECTED 2026-09-26 (§13, kept rather than edited out): this test first pinned the
+    // replacement "press Not now to clear them", on the reasoning that cancelConfirmations can
+    // consume these rows. It can — but the card carrying Not now renders only on the LAST message,
+    // pressing Approve sends a new one, and this refusal mints no card, so after Approve there is
+    // no Not now on screen. PaigeAIChat.approvalRecovery.test.tsx drives the real surface and
+    // proves it. The one recovery that exists in that state is asking again.
+    expect(refusal).toContain("they can ask you again for the one they want");
+    expect(refusal).not.toMatch(/they can press Not now/);
     expect(refusal).not.toContain("approving just one of them at a time");
-    expect(refusal).toContain("the card has a single Approve button and cannot do that");
+    expect(refusal).toContain("Do NOT tell them to approve one at a time or to press Not now");
   });
 
   it("states a cause that is TRUE of the branch it fires on (§13)", () => {

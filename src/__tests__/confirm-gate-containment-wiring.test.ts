@@ -133,3 +133,57 @@ describe("FIX C — a bug-report/improvement that cannot be filed says so; it ne
     expect(imp).toContain("tenant_id: impTenantId");
   });
 });
+
+describe("THE SHORTENED-ID HALF — a subject the executor cannot address never becomes a card (2026-09-26)", () => {
+  // 2026-09-13, production: with the fingerprint stable again, Paige sent a shortened action id, the
+  // operator approved, the approval was claimed, and advance_action cast the prefix to uuid and
+  // failed 22P02 — 13 proposals, 0 dismissals. The shape itself is proven behaviourally (and against
+  // production's own uuid input) in confirm-fingerprint.test.ts; these pin that BOTH doors use it.
+  const mint = HANDLER.indexOf("const recorded = await recordConfirmation(fp, tc.function.name, gateArgs, summary);");
+  const refuseAtMint = HANDLER.indexOf("if (malformedConfirmIdentity(tc.function.name, gateArgs) !== null) {");
+  const dispatch = HANDLER.indexOf('} else if (tc.function.name === "action_advance") {');
+  const rpc = HANDLER.indexOf('supabaseClient.rpc("advance_action"', dispatch);
+  const refuseAtDispatch = HANDLER.indexOf('if (malformedConfirmIdentity("action_advance", args) !== null) {', dispatch);
+
+  it("imports the shape check and its one refusal from the gate's home (§18)", () => {
+    expect(HANDLER).toMatch(
+      /import\s*\{[^}]*\bmalformedConfirmIdentity\b[^}]*\bunaddressableSubjectRefusal\b[^}]*\}\s*from\s*["']\.\.\/_shared\/confirm-fingerprint\.ts["']/,
+    );
+  });
+
+  it("refuses at the proposal door BEFORE anything is recorded — no card, no spent approval", () => {
+    expect(refuseAtMint).toBeGreaterThan(gateStart);
+    expect(mint).toBeGreaterThan(refuseAtMint);
+    const between = HANDLER.slice(refuseAtMint, mint);
+    expect(between).toContain("JSON.stringify(unaddressableSubjectRefusal())");
+    expect(between).toContain("continue;");
+  });
+
+  it("refuses at dispatch BEFORE the cast, for the lanes that never pass the gate", () => {
+    expect(dispatch).toBeGreaterThan(-1);
+    expect(refuseAtDispatch).toBeGreaterThan(dispatch);
+    expect(rpc).toBeGreaterThan(refuseAtDispatch);
+    expect(HANDLER.slice(refuseAtDispatch, rpc)).toContain("JSON.stringify(unaddressableSubjectRefusal())");
+  });
+
+  it("tells the model the complete-id contract where it reads the tool, for both tools that cast it", () => {
+    expect(HANDLER).toMatch(/name: "action_advance"[\s\S]{0,900}action_id: \{ type: "string", description: "The COMPLETE paige_actions id/);
+    expect(HANDLER).toMatch(/name: "action_get"[\s\S]{0,500}action_id: \{ type: "string", description: "The COMPLETE paige_actions id/);
+  });
+});
+
+describe("no refusal sends the operator to a control that is not on screen (2026-09-26)", () => {
+  // After Approve the card is gone — PaigeAIChat.approvalRecovery.test.tsx drives the real surface
+  // and proves it. So a note may FORBID these instructions but must never GIVE them. The general
+  // gate said "approve the actions one at a time"; #1450 replaced that on the CRM door with "press
+  // Not now to clear them", which was the same mistake.
+  it("no note instructs 'approve one at a time' or 'press Not now'", () => {
+    expect(HANDLER).not.toMatch(/they can approve (?:the actions|them) one at a time/);
+    expect(HANDLER).not.toMatch(/they can press Not now/);
+  });
+
+  it("both ambiguous terminals name the recovery that exists — asking again", () => {
+    expect(HANDLER).toContain("if they still want it they can ask you again.");
+    expect(HANDLER).toContain("and they can ask you again for the one they want.");
+  });
+});

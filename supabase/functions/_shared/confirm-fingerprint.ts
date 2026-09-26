@@ -81,6 +81,51 @@ export function confirmIdentityValue(tool: string, args: Record<string, unknown>
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
+// "The model carries it verbatim" (above) was the assumption, and production disproved it. On
+// 2026-09-13, with the fingerprint stable again, Paige shortened the ids in her own prose — "dismiss
+// action 424b85ac" — sent the PREFIX back as `action_id`, and the operator approved. The approval was
+// claimed; `advance_action(p_action_id uuid, ...)` then cast the prefix and failed 22P02 on an
+// approval already spent. The three actions are still `pending_approval`: 13 proposals, 0 dismissals.
+//
+// So every identity key also declares the SHAPE its value must have, and a proposal whose subject
+// does not fit is refused before it can become an approval card — while there is still nothing to
+// lose. Each shape is MEASURED against what the executor accepts, never a guess at what the value
+// "looks like": looser than the database is this incident; stricter is a wall Paige cannot explain.
+// A key without a shape fails confirm-fingerprint.test.ts.
+export const CONFIRM_IDENTITY_SHAPE: Readonly<Record<string, RegExp>> = Object.freeze({
+  // action_advance.action_id is cast to `uuid`. Postgres's uuid input accepts upper or lower hex,
+  // one pair of braces, and a hyphen after any group of four digits; it refuses whitespace, a
+  // prefix, a stray or doubled hyphen, and any other length. Measured on production 2026-09-26 with
+  // `pg_input_is_valid(value, 'uuid')`; every row is pinned in the test.
+  action_advance: /^(?:[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}|\{[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}\})$/i,
+});
+
+/**
+ * The subject value when the tool declares a shape and the value does not fit it — else null. Null
+ * also for a MISSING subject: that is the required-field path's to report, not "shortened". Tests
+ * the exact string the executor would receive, untrimmed, because that is what it would cast.
+ */
+export function malformedConfirmIdentity(tool: string, args: Record<string, unknown>): string | null {
+  const shape = CONFIRM_IDENTITY_SHAPE[tool];
+  const value = confirmIdentityValue(tool, args);
+  if (!shape || value === null) return null;
+  return shape.test(value) ? null : value;
+}
+
+/**
+ * What the model is told when a subject is refused. One home, because two doors refuse it — the
+ * confirm gate before a card is minted, and dispatch for the lanes that never pass the gate — and
+ * the operator must hear the same thing from both. Nothing is echoed back: the value is the model's
+ * own output, and the instruction is what gets it to the complete id.
+ */
+export function unaddressableSubjectRefusal(): { success: false; error: string; note: string } {
+  return {
+    success: false,
+    error: "subject_id_not_addressable",
+    note: "Nothing was proposed or changed, and no approval card was made. The id you sent is not a complete id — it looks shortened. Read the item again to get its complete id (for an action, call action_list, for example with status 'pending_approval'), then call this tool again with that id exactly as listed. Never shorten an id inside a tool call, even when you shorten it for the operator. If you cannot find the complete id, tell the operator in one plain line that you could not find that item and that nothing was changed.",
+  };
+}
+
 /**
  * A stable 16-hex-char fingerprint of `(tool, args)`. Keys are sorted, `confirm` is always dropped,
  * and any per-tool non-identity free-text (NON_IDENTITY_ARGS) is dropped — at every nesting level,

@@ -6,6 +6,24 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+### Consumed is not executed — and a recovery must name a control that exists in that state (2026-09-26)
+
+**Symptom.** `action_advance` showed 13 proposals and 1 consumed, which read as "mostly broken, once
+worked." It had never worked: the consumed approval was claimed and the action it approved failed on
+a shortened id. Separately, a refusal told the operator to "press Not now to clear them" — a fix for
+an earlier impossible instruction — while no card, and so no Not now, was on screen.
+
+**Root cause.** An approval being *claimed* was read as the action *running*. And a recovery was
+checked against the component that offers it (the card has a Not now button) instead of against the
+screen in the state where the instruction is spoken (after Approve, the card is gone).
+
+**Rule.** Confirm an approved action by reading the record it was meant to change — the action's
+status, the contact's row — never by the approval row alone. And prove a recovery instruction by
+rendering the real surface in the state it is given in, pressing what the person pressed, and
+asserting the named control is there. A recovery that is true only in some states is a trap.
+
+---
+
 ### A red job is read STEP by step — and a step behind an aborting step never ran (2026-09-26)
 
 **Symptom.** PR #1454's `verify` job was red. The failing `Test` step was measured against an

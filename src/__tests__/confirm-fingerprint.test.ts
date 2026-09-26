@@ -19,7 +19,9 @@ import {
   confirmFingerprint,
   NON_IDENTITY_ARGS,
   CONFIRM_IDENTITY_KEY,
+  CONFIRM_IDENTITY_SHAPE,
   confirmIdentityValue,
+  malformedConfirmIdentity,
 } from "../../supabase/functions/_shared/confirm-fingerprint.ts";
 
 const dismiss = (over: Record<string, unknown> = {}) => ({
@@ -121,5 +123,65 @@ describe("the batch-disambiguation subject id (FIX A — P0 confirm loop on a ba
     const subjects = ids.map((id) => confirmIdentityValue("action_advance", { action_id: id, to_status: "dismissed" }));
     expect(new Set(subjects).size).toBe(3);
     expect(subjects).toEqual(ids);
+  });
+});
+
+/**
+ * THE SECOND HALF OF THE P0, which the fingerprint fix above could not reach.
+ *
+ * 2026-09-13, production. With the fingerprint stable again, Paige shortened the action ids in her
+ * own prose ("dismiss action 424b85ac"), sent the PREFIX back as `action_id`, and the operator
+ * approved. The approval was claimed; `advance_action(p_action_id uuid, ...)` then cast "424b85ac"
+ * and failed 22P02 on an approval already spent. All three actions are still `pending_approval`.
+ * Measured: 13 proposals, 0 dismissals.
+ *
+ * So a subject the executor cannot address must never become an approval card. The table below is
+ * NOT a guess at what a UUID looks like: every row was measured on production on 2026-09-26 with
+ * `pg_input_is_valid(value, 'uuid')`, using synthetic values only. The shape may never be LOOSER
+ * than the database — that is the incident — and never STRICTER, which would be a wall Paige cannot
+ * explain.
+ */
+describe("an approval subject must be one the executor can address (the shortened-id half of the P0)", () => {
+  const MEASURED_ON_PROD: Array<[string, string, boolean]> = [
+    ["standard", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", true],
+    ["upper-case", "A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11", true],
+    ["braces", "{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11}", true],
+    ["no hyphens", "a0eebc999c0b4ef8bb6d6bb9bd380a11", true],
+    ["a hyphen after every four", "a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11", true],
+    ["leading space", " a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", false],
+    ["trailing space", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 ", false],
+    ["unbalanced brace", "{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", false],
+    ["an 8-character prefix", "a0eebc99", false],
+    ["31 hex digits", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a1", false],
+    ["33 hex digits", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a111", false],
+    ["a hyphen after three", "a0e-ebc99-9c0b-4ef8-bb6d-6bb9bd380a11", false],
+    ["a trailing hyphen", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11-", false],
+    ["a leading hyphen", "-a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", false],
+    ["a double hyphen", "a0eebc99--9c0b-4ef8-bb6d-6bb9bd380a11", false],
+    ["a non-hex digit", "g0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", false],
+  ];
+
+  it.each(MEASURED_ON_PROD)("%s — agrees with what production's uuid input accepts", (_label, value, dbAccepts) => {
+    expect(malformedConfirmIdentity("action_advance", { action_id: value, to_status: "dismissed" }))
+      .toBe(dbAccepts ? null : value);
+  });
+
+  it("refuses the exact value the operator approved on 2026-09-13", () => {
+    expect(malformedConfirmIdentity("action_advance", { action_id: "424b85ac", to_status: "dismissed" })).toBe("424b85ac");
+  });
+
+  it("never blocks a tool that declares no identity shape", () => {
+    expect(malformedConfirmIdentity("crm_create_contact", { first_name: "A" })).toBeNull();
+    expect(malformedConfirmIdentity("improvement_propose", { kind: "policy", target_ref: "x" })).toBeNull();
+  });
+
+  it("leaves a MISSING subject to the required-field path rather than calling it shortened", () => {
+    expect(malformedConfirmIdentity("action_advance", { to_status: "dismissed" })).toBeNull();
+    expect(malformedConfirmIdentity("action_advance", { action_id: "" })).toBeNull();
+    expect(malformedConfirmIdentity("action_advance", { action_id: "   " })).toBeNull();
+  });
+
+  it("every tool that declares an identity KEY also declares its SHAPE — a key without one is this incident waiting", () => {
+    expect(Object.keys(CONFIRM_IDENTITY_SHAPE).sort()).toEqual(Object.keys(CONFIRM_IDENTITY_KEY).sort());
   });
 });
