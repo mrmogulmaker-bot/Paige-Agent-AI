@@ -12,7 +12,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(14);
+SELECT plan(18);
 
 -- Production grants `authenticated` these privileges; a schema replayed from migrations does not.
 -- Reproduced inside the rolled-back transaction, and no wider than production.
@@ -49,6 +49,14 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
   INSERT INTO public.clients (id, tenant_id, created_by, first_name, last_name, account_number, linked_user_id) VALUES
     ('a5530000-0000-0000-0000-00000000c1e1', _b, _adb, 'P', 'Client', 'PSP-1', _p);
+  -- O: a platform administrator who is a member of A but is working in B (not a member there).
+  INSERT INTO auth.users (id, email) VALUES ('a5530000-0000-0000-0000-000000000e04', 'ps-operator-o@example.test');
+  INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner)
+  VALUES (_a, 'a5530000-0000-0000-0000-000000000e04', 'member', 'active', false);
+  INSERT INTO public.user_roles (user_id, role) VALUES ('a5530000-0000-0000-0000-000000000e04', 'platform_admin')
+    ON CONFLICT DO NOTHING;
+  INSERT INTO public.profiles (user_id, active_tenant_id) VALUES ('a5530000-0000-0000-0000-000000000e04', _b)
+    ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
 END $$;
 
 -- S1: P registers a device while working in A. No business is named; it is filled.
@@ -159,6 +167,48 @@ SELECT throws_like($q$
           'a5530000-0000-0000-0000-00000000000a')$q$,
   'PUSH_REGISTRANT_NOT_SUBJECT:%', 'only the person can register their own device');
 SELECT set_config('request.jwt.claims', '', true);
+
+-- 15. Someone working in a business they do not belong to registers for the one business they do
+--     belong to, rather than being refused.
+SELECT set_config('request.jwt.claims', '{"sub":"a5530000-0000-0000-0000-000000000e04","role":"authenticated"}', true);
+SELECT lives_ok($q$
+  INSERT INTO public.push_subscriptions (user_id, endpoint, p256dh_key, auth_key)
+  VALUES ('a5530000-0000-0000-0000-000000000e04', 'https://push.example.test/o1', 'k', 'a')$q$,
+  'a person working outside their own business still registers for the business they belong to');
+SELECT set_config('request.jwt.claims', '', true);
+SELECT is((SELECT count(*)::int FROM public.push_subscriptions
+            WHERE endpoint LIKE '%/o1' AND tenant_id = 'a5530000-0000-0000-0000-00000000000a'), 1,
+  'and the registration is recorded for the business they belong to');
+
+-- 17. The browser's registration, as the signed-in person, is idempotent per device and business.
+SELECT set_config('request.jwt.claims', '{"sub":"a5530000-0000-0000-0000-000000000e01","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  INSERT INTO public.push_subscriptions (user_id, endpoint, p256dh_key, auth_key)
+  VALUES ('a5530000-0000-0000-0000-000000000e01', 'https://push.example.test/up', 'k', 'a')
+  ON CONFLICT (user_id, endpoint, tenant_id) DO UPDATE SET last_used_at = now();
+  INSERT INTO public.push_subscriptions (user_id, endpoint, p256dh_key, auth_key)
+  VALUES ('a5530000-0000-0000-0000-000000000e01', 'https://push.example.test/up', 'k', 'a')
+  ON CONFLICT (user_id, endpoint, tenant_id) DO UPDATE SET last_used_at = now();
+  PERFORM set_config('ps.upsert_rows',
+    (SELECT count(*) FROM public.push_subscriptions WHERE endpoint LIKE '%/up')::text, true);
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('ps.upsert_rows', SQLSTATE, true);
+END $$;
+-- 18. The person cannot hand their subscription to someone else.
+DO $$ BEGIN
+  UPDATE public.push_subscriptions SET user_id = 'a5530000-0000-0000-0000-000000000e03'
+   WHERE endpoint LIKE '%/up';
+  PERFORM set_config('ps.reassign', 'ok', true);
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('ps.reassign', SQLSTATE, true);
+END $$;
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+SELECT is(current_setting('ps.upsert_rows'), '1',
+  'registering the same device twice in the same business keeps one subscription');
+SELECT isnt(current_setting('ps.reassign'), 'ok',
+  'a person cannot reassign their subscription to someone else');
 
 SELECT * FROM finish();
 ROLLBACK;
