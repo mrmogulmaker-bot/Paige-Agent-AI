@@ -14,6 +14,15 @@ BEGIN;
 
 SELECT plan(9);
 
+-- Production grants `authenticated` these table privileges; a schema replayed from migrations
+-- does not, so without this every read below stops at the grant layer before any policy is
+-- evaluated. Reproduced here, inside the transaction that rolls back, so the test exercises
+-- the policies and nothing else.
+GRANT SELECT, INSERT, UPDATE ON
+  public.client_goals, public.credit_predictions, public.funding_application_outcomes,
+  public.outreach_drafts, public.coach_clients
+TO authenticated;
+
 DO $$
 DECLARE
   _t uuid := 'a1100000-0000-0000-0000-000000000001';
