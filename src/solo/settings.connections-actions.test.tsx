@@ -209,6 +209,16 @@ describe("Sending domains can be operated, not only listed", () => {
     await act(async () => { findButton("Check DNS").click(); });
     expect(text()).toContain("domain_not_found");
   });
+
+  it("lists each DNS record the domain must publish, each with a copy control", async () => {
+    const dnsRecords = [{ type: "TXT", name: "resend._domainkey.mail", record: "p=MIGfMA0GCSqGSIb3" }];
+    state.comms = comms({ domains: [{ ...DOMAIN, dnsRecords }] });
+    await mount();
+    expect(text()).toContain("Publish these at your DNS host");
+    expect(text()).toContain("resend._domainkey.mail");
+    expect(text()).toContain("p=MIGfMA0GCSqGSIb3");
+    expect(host.querySelector('[aria-label="Copy the TXT record"]')).toBeTruthy();
+  });
 });
 
 describe("The Google sending account is connectable, and honestly named", () => {

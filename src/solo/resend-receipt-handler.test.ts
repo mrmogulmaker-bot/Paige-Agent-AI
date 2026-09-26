@@ -16,12 +16,17 @@ function harness(result: unknown = { data: 'processed', error: null }, signingSe
   const ingest = vi.fn().mockResolvedValue(result);
   const log = vi.fn();
   let handle!: (request: Request) => Promise<Response>;
-  const settingsRead = vi.fn((table: string, key: string) => ({ data: table === 'admin_app_settings' && key === 'resend_webhook_secret' && settingsSecret !== null ? { value: settingsSecret } : null, error: null }));
+  // Answers only the exact read the real schema supports (admin_app_settings.key → value), so a
+  // handler that asks for the wrong column gets nothing, as it would in production.
+  const settingsRead = vi.fn((table: string, field: string, column: string, key: string) => ({
+    data: table === 'admin_app_settings' && field === 'value' && column === 'key' && key === 'resend_webhook_secret' && settingsSecret !== null ? { value: settingsSecret } : null,
+    error: null,
+  }));
   const createClient = vi.fn(() => ({
     rpc: (_name: string, args: Record<string, unknown>) => ingest({
       receiptId: args._receipt_id, messageId: args._message_id, status: args._status, eventAt: args._event_at,
     }),
-    from: (table: string) => ({ select: () => ({ eq: (_col: string, key: string) => ({ maybeSingle: async () => settingsRead(table, key) }) }) }),
+    from: (table: string) => ({ select: (field: string) => ({ eq: (column: string, key: string) => ({ maybeSingle: async () => settingsRead(table, field, column, key) }) }) }),
   }));
   const source = ts.transpileModule(readFileSync('supabase/functions/handle-resend-webhook/index.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -54,13 +59,14 @@ describe('verified shared receipt boundary', () => {
   it('fails closed when signing is unconfigured', async () => {
     const { ingest, handle, settingsRead, log } = harness(undefined, '');
     expect((await handle(request())).status).toBe(503); expect(ingest).not.toHaveBeenCalled();
-    expect(settingsRead).toHaveBeenCalledWith('admin_app_settings', 'resend_webhook_secret'); expect(log).toHaveBeenCalledWith('receipt_not_configured');
+    expect(settingsRead).toHaveBeenCalledWith('admin_app_settings', 'value', 'key', 'resend_webhook_secret'); expect(log).toHaveBeenCalledWith('receipt_not_configured');
   });
   it('refuses a settings-row value that is not a signing secret', async () => {
     const h = harness(undefined, '', 'not-a-whsec'); expect((await h.handle(request())).status).toBe(503); expect(h.ingest).not.toHaveBeenCalled();
   });
   it('verifies against the operator settings secret when env is unset', async () => {
     const h = harness(undefined, '', secret); expect((await h.handle(request())).status).toBe(200);
+    expect(h.ingest).toHaveBeenCalledWith({ receiptId: 'msg_receipt1', messageId: 'provider-message-1', status: 'delivered', eventAt: '2026-09-04T00:00:00.000Z' });
     const t = harness(undefined, '', secret); const r = request(); r.headers.set('svix-signature', 'v1,invalid');
     expect((await t.handle(r)).status).toBe(401); expect(t.ingest).not.toHaveBeenCalled();
   });
