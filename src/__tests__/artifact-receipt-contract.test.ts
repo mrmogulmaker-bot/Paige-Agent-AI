@@ -157,34 +157,41 @@ describe("WIRING — each creation handler wraps its success in the honesty guar
     expect(src).toMatch(/usableDrafts\(/);
     expect(src).toMatch(/artifactProduced\(\s*["']draft_list["']/);
   });
-  // One handler's source: from its dispatch branch to the next handler's. A count over the whole
-  // file let two Studio image guards stand in for a removed document guard (#1461), so each site is
-  // now asserted inside its own handler.
-  function handler(name: string, next: string) {
-    const start = src.indexOf(`tc.function.name === "${name}") {`);
-    const end = src.indexOf(`tc.function.name === "${next}") {`, start + 1);
+  // One handler's source: from its dispatch branch to the next dispatch branch of ANY name. A count
+  // over the whole file let two Studio image guards stand in for a removed document guard (#1461);
+  // ending the slice at a named neighbour, or starting it at a non-unique marker, would let a guard
+  // from a different handler do the same (§39 finding on this PR). So the marker must be unique and
+  // the slice stops at the very next handler.
+  function handler(name: string) {
+    const marker = `tc.function.name === "${name}") {`;
+    const start = src.indexOf(marker);
     expect(start, `${name} handler`).toBeGreaterThan(-1);
-    expect(end, `${next} handler after ${name}`).toBeGreaterThan(start);
-    return src.slice(start, end);
+    expect(src.indexOf(marker, start + 1), `${name} dispatch marker must be unique`).toBe(-1);
+    const after = start + marker.length;
+    const next = src.slice(after).search(/tc\.function\.name === "[^"]+"\) \{/);
+    expect(next, `a handler after ${name}`).toBeGreaterThan(-1);
+    return src.slice(start, after + next);
   }
   it("content_save and growth_page_save each guard the saved id with the honest error", () => {
-    for (const [name, next] of [["content_save", "document_generate"], ["growth_page_save", "growth_page_publish"]]) {
-      const body = handler(name, next);
+    for (const name of ["content_save", "growth_page_save"]) {
+      const body = handler(name);
       expect(body, name).toMatch(/artifactProduced\(\s*["']saved_id["']/);
       expect(body, name).toContain("ARTIFACT_ABSENT_ERROR.saved_id");
     }
   });
   it("draft_marketing_content and generate_image each return the honest error for their shape", () => {
-    expect(handler("draft_marketing_content", "generate_image")).toContain("ARTIFACT_ABSENT_ERROR.draft_list");
-    expect(handler("generate_image", "content_save")).toContain("ARTIFACT_ABSENT_ERROR.file_url");
+    expect(handler("draft_marketing_content")).toContain("ARTIFACT_ABSENT_ERROR.draft_list");
+    expect(handler("generate_image")).toContain("ARTIFACT_ABSENT_ERROR.file_url");
   });
   it("document_generate never claims an artifact; the durable worker verifies the persisted id", () => {
     // Chat side: the durable submission returns a work id. A missing one is an honest failure, and
     // no branch hands back a content id as if a document already exists.
-    const body = handler("document_generate", "growth_list");
+    const body = handler("document_generate");
     expect(body).toContain("DURABLE_DOCUMENT_WORK_ID_MISSING");
     expect(body).toContain("Nothing may be claimed as created");
-    expect(body).not.toMatch(/(?<![A-Za-z_])content_id\s*:/);
+    // Any key form: `content_id:`, `"content_id":`, or shorthand `{ content_id }` — but not
+    // `target_content_id` or a read like `accepted.content_id`.
+    expect(body).not.toMatch(/(?<![\w.$])["']?content_id["']?\s*[:,}]/);
     // Worker side: success is read back from the database and requires the persisted content id.
     const worker = readFileSync("supabase/functions/paige-document-worker/index.ts", "utf8");
     expect(worker).toMatch(/work_status !== "succeeded" \|\| !row\.content_id\)[\s\S]{0,80}DURABLE_DOCUMENT_SUCCESS_READBACK_MISSING/);
