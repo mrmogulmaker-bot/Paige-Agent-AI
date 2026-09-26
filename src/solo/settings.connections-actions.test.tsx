@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloSettings } from "./settings";
+import type { SoloDomain } from "./data/useSoloComms";
 
 /**
  * The Connections controls a person can actually OPERATE.
@@ -157,7 +158,9 @@ describe("Business details are graded here, but owned by Setup", () => {
 });
 
 describe("Sending domains can be operated, not only listed", () => {
-  const DOMAIN = { id: "d1", domain: "mail.example.com", fromEmailLocal: "no-reply", fromName: "Example", status: "pending", isDefault: false };
+  // Typed as the real contract so a newly required field fails the typecheck here, not a render
+  // at runtime (#1138 added dnsRecords; this fixture went stale and crashed three tests).
+  const DOMAIN: SoloDomain = { id: "d1", domain: "mail.example.com", fromEmailLocal: "no-reply", fromName: "Example", status: "pending", isDefault: false, dnsRecords: [] };
 
   it("registers a domain through the existing edge seam", async () => {
     const add = vi.fn(async (_input: { domain: string; fromEmailLocal: string; fromName: string }) => ({ ok: true, error: null }));
