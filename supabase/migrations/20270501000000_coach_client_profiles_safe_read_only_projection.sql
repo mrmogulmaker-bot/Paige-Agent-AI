@@ -10,7 +10,8 @@
 --   * it is read-only: `authenticated` may SELECT it and nothing else; `anon` holds nothing;
 --   * an assigned staff member sees an assigned person only for the business the assignment
 --     belongs to, and only while working in that business;
---   * every other branch of the gate is unchanged.
+--   * every other branch of the gate is unchanged;
+--   * the gate is evaluated before any condition a caller adds to their query.
 --
 -- It remains an owner-run view on purpose: `profiles` lets a person read only their own row, so an
 -- invoker view would show every caller nothing but themselves. The gate below is therefore the whole
@@ -24,7 +25,7 @@
 DROP VIEW public.coach_client_profiles_safe;
 
 -- security-invoker-exempt: owner-run projection over profiles (self-only RLS); an invoker view would show each staff caller only their own row. Access is the WHERE gate below.
-CREATE VIEW public.coach_client_profiles_safe AS
+CREATE VIEW public.coach_client_profiles_safe WITH (security_barrier = true) AS
 SELECT
   p.id,
   p.user_id,
@@ -61,4 +62,5 @@ COMMENT ON VIEW public.coach_client_profiles_safe IS
   'Read-only display projection of profiles (id, user_id, full_name, avatar_url, suspended_at, '
   'suspended_reason) for staff surfaces. Owner-run because profiles RLS is self-only; the WHERE is '
   'the access gate: self, platform owner, tenant staff of the person''s active business, or the '
-  'person''s assigned staff member while working in the assignment''s business. SELECT only.';
+  'person''s assigned staff member while working in the assignment''s business. SELECT only; '
+  'security_barrier, so the gate runs before caller conditions. Never grant a write on it.';
