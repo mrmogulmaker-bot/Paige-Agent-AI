@@ -13574,47 +13574,55 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // so nothing here quotes the evidence. Holding it with a protected reply would mean a turn
       // whose reply is withheld also hides whether the person's approved change happened, and
       // the card would then have to guess.
+      //
+      // It never throws. It runs on the exits that carry the turn's last word (a changed workspace,
+      // a snag, an interrupted Live answer), and nothing here may cost the client the frame it needs
+      // to settle — so a failure is logged, loudly, and the exit carries on.
       let approvalOutcomeSent = false;
       const emitApprovalOutcome = async (controller: ReadableStreamDefaultController) => {
         if (approvalOutcomeSent || approvedConfirmations.size === 0) return;
         approvalOutcomeSent = true;
-        const tokens = [...approvedConfirmations];
-        const classified = tokens.map((token) => {
-          const spentBy = approvalSpend.get(token);
-          const tool = approvalTokenTool.get(token);
-          return spentBy !== undefined
-            ? classifySpentApproval(toolResultContent.get(spentBy), { reportsOk: tool !== undefined && N8N_MANAGEMENT_TOOL_NAMES.has(tool) })
-            : classifyUnspentApproval(tool ? approvalRefusals.get(tool) : approvalLookupFailed ? "lookup_failed" : undefined);
-        });
-        // An approval this request could not use may have been used before it, by a request that did
-        // the work — "didn't run" is then true of this request and false of the change. Only the
-        // stored row can say. If the look fails, nobody knows, and the card says so.
-        let usedEarlier: (token: string) => boolean | "unknown" = () => false;
-        const unrun = tokens.filter((_, i) => classified[i].outcome === "not_run");
-        if (unrun.length) {
-          try {
-            const { data, error } = await supabase.from("paige_pending_confirmations")
-              .select("fingerprint,issued_in_request")
-              .eq("user_id", user.id)
-              .in("fingerprint", [...new Set(unrun.map((token) => token.split(":")[0]))])
-              .not("consumed_at", "is", null)
-              .lt("consumed_at", approvalRequestStartedAt);
-            if (error) throw error;
-            const rows = (data ?? []) as Array<{ fingerprint: string; issued_in_request: string | null }>;
-            usedEarlier = (token) => {
-              const [fp, issued] = token.split(":");
-              return rows.some((row) => row.fingerprint === fp && (issued === undefined || row.issued_in_request === issued));
-            };
-          } catch (e) {
-            console.error("[paige] approval outcome: could not check for an earlier use", JSON.stringify({ correlation_id: requestNonce, message: (e as { message?: string })?.message ?? String(e) }));
-            usedEarlier = () => "unknown";
+        try {
+          const tokens = [...approvedConfirmations];
+          const classified = tokens.map((token) => {
+            const spentBy = approvalSpend.get(token);
+            const tool = approvalTokenTool.get(token);
+            return spentBy !== undefined
+              ? classifySpentApproval(toolResultContent.get(spentBy), { reportsOk: tool !== undefined && N8N_MANAGEMENT_TOOL_NAMES.has(tool) })
+              : classifyUnspentApproval(tool ? approvalRefusals.get(tool) : approvalLookupFailed ? "lookup_failed" : undefined);
+          });
+          // An approval this request could not use may have been used before it, by a request that did
+          // the work — "didn't run" is then true of this request and false of the change. Only the
+          // stored row can say. If the look fails, nobody knows, and the card says so.
+          let usedEarlier: (token: string) => boolean | "unknown" = () => false;
+          const unrun = tokens.filter((_, i) => classified[i].outcome === "not_run");
+          if (unrun.length) {
+            try {
+              const { data, error } = await supabase.from("paige_pending_confirmations")
+                .select("fingerprint,issued_in_request")
+                .eq("user_id", user.id)
+                .in("fingerprint", [...new Set(unrun.map((token) => token.split(":")[0]))])
+                .not("consumed_at", "is", null)
+                .lt("consumed_at", approvalRequestStartedAt);
+              if (error) throw error;
+              const rows = (data ?? []) as Array<{ fingerprint: string; issued_in_request: string | null }>;
+              usedEarlier = (token) => {
+                const [fp, issued] = token.split(":");
+                return rows.some((row) => row.fingerprint === fp && (issued === undefined || row.issued_in_request === issued));
+              };
+            } catch (e) {
+              console.error("[paige] approval outcome: could not check for an earlier use", JSON.stringify({ correlation_id: requestNonce, message: (e as { message?: string })?.message ?? String(e) }));
+              usedEarlier = () => "unknown";
+            }
           }
+          const approvalOutcome = buildApprovalOutcome(tokens.map((token, i) => ({
+            fingerprint: token,
+            ...settleUsedEarlier(classified[i], usedEarlier(token)),
+          })));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_approval_outcome: approvalOutcome })}\n\n`));
+        } catch (e) {
+          console.error("[paige] approval outcome frame not sent", JSON.stringify({ correlation_id: requestNonce, message: (e as { message?: string })?.message ?? String(e) }));
         }
-        const approvalOutcome = buildApprovalOutcome(tokens.map((token, i) => ({
-          fingerprint: token,
-          ...settleUsedEarlier(classified[i], usedEarlier(token)),
-        })));
-        controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_approval_outcome: approvalOutcome })}\n\n`));
       };
       const finalStream = new ReadableStream({
         async start(controller) {
@@ -14121,8 +14129,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                  await persistAssistantTurn(finalAssistantText, interruptedMeta);
                } catch { console.error("[paige] partial Live answer persistence failed"); }
              }
+             // What became of the approvals, then the error frame the Live client settles on — each
+             // on its own, so the one can never cost the client the other.
+             await emitApprovalOutcome(controller);
              try {
-               await emitApprovalOutcome(controller);
                controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_live_error: "answer_interrupted" })}\n\n`));
              } catch { /* caller already left */ }
              return;
@@ -14131,10 +14141,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
            // with a truncated stream — emit a clean fallback reply and a [DONE].
            console.error("[paige] live reasoning stream failed:", (e as Error)?.message);
            const snag = "I hit a snag finishing that — mind trying again?";
+           // Before the invitation to try again: the card says what already ran, so trying again is
+           // never the way something happens twice.
+           await emitApprovalOutcome(controller);
            try {
-             // Before the invitation to try again: the card says what already ran, so trying again
-             // is never the way something happens twice.
-             await emitApprovalOutcome(controller);
              controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: snag } }] })}\n\n`));
              controller.enqueue(enc.encode("data: [DONE]\n\n"));
            } catch { /* client already gone */ }
