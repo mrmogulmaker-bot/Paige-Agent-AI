@@ -5,14 +5,15 @@
 -- six columns its callers read; signed-in users may read it and do nothing else; signed-out
 -- callers hold nothing on it; a business's staff see that business's people and not another's; a
 -- person with no staff role sees only themselves; an assigned staff member sees the person assigned
--- to them only while working in the business the assignment belongs to; and a write through it is
+-- to them only while working in the business the assignment belongs to; its gate is evaluated before
+-- any condition a caller supplies; and a write through it is
 -- refused.
 --
 -- Synthetic fixtures only. Asserts counts, privileges and refusals, never field values. Rolls back.
 -- ============================================================================
 BEGIN;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- Function grants exactly as production holds them for `authenticated`, so the gate is evaluated
 -- here as it is there.
@@ -85,14 +86,22 @@ SELECT ok(has_table_privilege('authenticated', 'public.coach_client_profiles_saf
 SELECT ok(NOT (has_table_privilege('authenticated', 'public.coach_client_profiles_safe', 'INSERT')
             OR has_table_privilege('authenticated', 'public.coach_client_profiles_safe', 'UPDATE')
             OR has_table_privilege('authenticated', 'public.coach_client_profiles_safe', 'DELETE')
-            OR has_table_privilege('authenticated', 'public.coach_client_profiles_safe', 'TRUNCATE')),
+            OR has_table_privilege('authenticated', 'public.coach_client_profiles_safe', 'TRUNCATE')
+            OR has_any_column_privilege('authenticated', 'public.coach_client_profiles_safe', 'INSERT')
+            OR has_any_column_privilege('authenticated', 'public.coach_client_profiles_safe', 'UPDATE')),
   'signed-in users cannot write through the projection');
 
 -- 4. Signed-out callers hold nothing on it.
 SELECT ok(NOT (has_table_privilege('anon', 'public.coach_client_profiles_safe', 'SELECT')
             OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'INSERT')
             OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'UPDATE')
-            OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'DELETE')),
+            OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'DELETE')
+            OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'TRUNCATE')
+            OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'REFERENCES')
+            OR has_table_privilege('anon', 'public.coach_client_profiles_safe', 'TRIGGER')
+            OR has_any_column_privilege('anon', 'public.coach_client_profiles_safe', 'SELECT')
+            OR has_any_column_privilege('anon', 'public.coach_client_profiles_safe', 'INSERT')
+            OR has_any_column_privilege('anon', 'public.coach_client_profiles_safe', 'UPDATE')),
   'signed-out callers hold nothing on the projection');
 
 -- 5-6. A business's admin sees that business's people, and no one from another business.
@@ -121,7 +130,12 @@ SELECT is(pg_temp.ccp_seen('a5540000-0000-0000-0000-0000000000c1',
   ARRAY['a5540000-0000-0000-0000-000000000e01']::uuid[]), 1::bigint,
   'an assigned staff member working in the assignment''s business sees the assigned person');
 
--- 10. A write through the projection is refused.
+-- 10. The gate is evaluated before any condition a caller supplies.
+SELECT ok(coalesce((SELECT 'security_barrier=true' = ANY (reloptions) FROM pg_class
+                     WHERE oid = 'public.coach_client_profiles_safe'::regclass), false),
+  'the projection''s gate is evaluated before any condition a caller supplies');
+
+-- 11. A write through the projection is refused.
 SELECT set_config('request.jwt.claims', '{"sub":"a5540000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
 SET LOCAL ROLE authenticated;
 SELECT throws_ok(
