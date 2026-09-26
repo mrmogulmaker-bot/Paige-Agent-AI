@@ -24,7 +24,8 @@ GRANT EXECUTE ON FUNCTION public.is_tenant_admin(uuid), public.agency_can_manage
   public.has_any_role(uuid, text[]), public.is_assigned_to_client(uuid, uuid, text),
   public.tenant_staff_owns_user(uuid, uuid), public.is_platform_admin(), public.is_platform_admin(uuid),
   public.is_platform_operator(), public.is_platform_owner(), public.is_platform_owner(uuid),
-  public.is_super_admin(), public.is_super_admin(uuid), storage.foldername(text)
+  public.is_super_admin(), public.is_super_admin(uuid), public.is_tenant_member(uuid),
+  public.can_manage_tenant_brand(uuid)
 TO authenticated;
 
 DO $$
