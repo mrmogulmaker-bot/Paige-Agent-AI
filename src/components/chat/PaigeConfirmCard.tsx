@@ -307,7 +307,9 @@ export function PaigeConfirmCard(props: PaigeConfirmCardProps) {
                         className={cn(
                           "mt-0.5 block text-xs leading-4",
                           state === "failed" ? "text-destructive"
-                            : state === "unconfirmed" ? "text-[hsl(var(--warning))]"
+                            // Amber, deepened toward ink: at 12px on the amber-tinted card the plain
+                            // token measured 4.56:1 in light (render-results.json), too thin a margin.
+                            : state === "unconfirmed" ? "text-[color-mix(in_oklab,hsl(var(--warning))_78%,hsl(var(--foreground)))]"
                             : "text-muted-foreground",
                         )}
                       >
