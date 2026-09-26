@@ -175,7 +175,12 @@ class FakeClient {
     };
     this.functions = { invoke: async (name, options) => {
       this._live().recorder.functions.push({ name, ...options, client: this._kind });
-      return { data: null, error: null };
+      // A scenario may answer for a function, as the full `{ data, error }` supabase-js returns
+      // (or a function of the invoke options returning one) — needed to drive what the caller
+      // does with each kind of answer, including the ones that never came back.
+      const configured = this._live().scenario.functions?.[name];
+      const result = typeof configured === "function" ? configured(options) : configured;
+      return result ?? { data: null, error: null };
     } };
     this.channel = () => ({ send: async () => {}, subscribe: () => ({}), on: function () { return this; } });
     this.removeChannel = () => {};
