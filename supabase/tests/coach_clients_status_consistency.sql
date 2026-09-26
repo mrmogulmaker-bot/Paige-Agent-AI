@@ -41,9 +41,13 @@ BEGIN
   INSERT INTO public.user_roles (user_id, role) VALUES (_coach, 'coach')
   ON CONFLICT DO NOTHING;
 
-  INSERT INTO public.coach_clients (coach_user_id, client_user_id, status) VALUES
-    (_coach, _act, 'active'),
-    (_coach, _inact, 'inactive');
+  -- A relationship belongs to the tenant that holds the client, so each client is linked there.
+  INSERT INTO public.clients (id, tenant_id, created_by, first_name, last_name, account_number, linked_user_id) VALUES
+    ('a1100000-0000-0000-0000-00000000c1e1', _t, _coach, 'Active', 'Client', 'S11A-1', _act),
+    ('a1100000-0000-0000-0000-00000000c1e2', _t, _coach, 'Inactive', 'Client', 'S11I-1', _inact);
+  INSERT INTO public.coach_clients (tenant_id, coach_user_id, client_user_id, status) VALUES
+    (_t, _coach, _act, 'active'),
+    (_t, _coach, _inact, 'inactive');
 
   INSERT INTO public.client_goals (user_id, goal_category) VALUES
     (_act, 'other'), (_inact, 'other');
