@@ -201,7 +201,18 @@ jobs:
       # `db reset` just replayed — so the definition Postgres actually resolves is the authority,
       # not a filename-sort heuristic. Both artifacts are generated together, so they cannot
       # disagree without one of the two guards going red.
+      # MEASURED 2026-09-26, and the reason this one step carries a condition its neighbours
+      # do not: this job has failed at its FIRST test step since 2026-09-24 (#1448 removed the
+      # Live pilot envelope and left paige_live_pilot_feature_guard.sql asserting it — 22/140,
+      # identical failures on main run 36034621731 and on this branch). `bash -e` aborts the job
+      # there, so all 28 proof steps after it, this one included, have not executed in CI for two
+      # days. A proof a workflow claims to gate and does not run is worse than one it never
+      # claimed — the comment twelve lines into the `contract` job above says exactly that. This
+      # makes THIS proof report its own result; it weakens nothing (a failure here still fails
+      # the job). The stale guard, and un-darkening the other 27, are filed as their own item
+      # rather than fixed from this lane.
       - run: supabase test db supabase/tests/crm_patch_fields_match_database.sql
+        if: ${{ !cancelled() }}
       - run: supabase test db supabase/tests/paige_spine_foundation.sql
       # Vibe Media Credit Ledger: append-only, closure math, anti-leakage release
       # gate, lazy mint, RLS, and the §59 service-role surface (2026-09-12).
