@@ -1051,6 +1051,16 @@ serve(async (req) => {
     const scopedClientRef: string | null = authorizedClientRef;
     /** True when a client was named but could not be authorized: do NO client-scoped work. */
     const clientScopeDenied: boolean = clientScopeRefusal !== null;
+    // `client_memory` rows carry a tenant. A row naming a client takes that client's tenant in the
+    // database; a row about the caller takes the caller's active tenant, which this service-role client
+    // cannot resolve, so it is read once per turn through the caller's own session. Null means no
+    // active tenant, and the database then refuses the row rather than guess one.
+    let callerActiveTenantRead: Promise<string | null> | null = null;
+    const callerActiveTenantId = (): Promise<string | null> =>
+      (callerActiveTenantRead ??= (async () => {
+        const { data, error } = await supabaseClient.rpc("current_user_tenant_id");
+        return error ? null : ((data ?? null) as string | null);
+      })());
       // THE SIX REFUSAL REASONS ARE NOT ONE KIND OF THING, and a consumer that treats them as one
     // asserts something false to the person. Two are PERMISSION verdicts — the read succeeded and
     // the answer was no. Four are UNKNOWN — an RPC blip, a failed read, a thrown exception —
@@ -1269,6 +1279,7 @@ JSON:`;
           metadata: { channel: "text" },
         };
         if (scopedClientId) memoryInsert.client_id = scopedClientId;
+        else memoryInsert.tenant_id = await callerActiveTenantId();
         await recordWrite("client_memory:turn", supabase.from("client_memory").insert(memoryInsert));
       }
 
@@ -1299,6 +1310,7 @@ JSON:`;
                 embedding: emb,
               };
               if (scopedClientId) milestoneMemory.client_id = scopedClientId;
+              else milestoneMemory.tenant_id = await callerActiveTenantId();
               await recordWrite("client_memory:milestone", supabase.from("client_memory").insert(milestoneMemory));
             }
           }
@@ -1343,6 +1355,7 @@ JSON:`;
                 metadata: { channel: "text", source: "auto_extracted" },
               };
               if (scopedClientId) factMemory.client_id = scopedClientId;
+              else factMemory.tenant_id = await callerActiveTenantId();
               await recordWrite(`client_memory:${memoryType}`, supabase.from("client_memory").insert(factMemory));
             }
           }
@@ -1864,6 +1877,7 @@ JSON:`;
               metadata: { source: "explicit_signal", channel: "text" },
             };
             if (scopedClientId) row.client_id = scopedClientId;
+            else row.tenant_id = await callerActiveTenantId();
             await recordWrite("client_memory:extracted", supabase.from("client_memory").insert(row));
           }
         }
@@ -15032,7 +15046,17 @@ export async function runStructuredExtractionAndSync(
       memory_type: "report_upload",
       content: memoryContent,
     };
-    if (clientId) memoryInsert.client_id = clientId;
+    if (clientId) {
+      memoryInsert.client_id = clientId;
+    } else {
+      // A row about the caller takes the caller's active tenant, read through the caller's own session
+      // (this client is service-role). Null leaves the database to refuse the row rather than guess.
+      const caller = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: callerTenant, error: callerTenantErr } = await caller.rpc("current_user_tenant_id");
+      memoryInsert.tenant_id = callerTenantErr ? null : (callerTenant ?? null);
+    }
     const remembered = await writeIfScopeCurrent("client_memory", () => supabase.from("client_memory").insert(memoryInsert));
     if (remembered !== "ok") return stoppedBy(remembered, "client_memory");
 
