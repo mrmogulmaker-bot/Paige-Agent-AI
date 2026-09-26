@@ -20,24 +20,26 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Ajv from "ajv";
+import Ajv, { type ErrorObject, type SchemaObject } from "ajv";
 import { CRM_COMMAND_TOOLS } from "../../supabase/functions/_shared/crm-command/catalog.ts";
 import { CRM_PATCH_FIELDS } from "../../supabase/functions/_shared/crm-command/patch-fields.generated.ts";
 
 const MIGRATION = "supabase/migrations/20270204000000_governed_crm_contact_company_commands.sql";
 const GEN = "scripts/ci/crm-patch-field-gen.mjs";
 
-const patchSchema = (toolName: string): any =>
-  (CRM_COMMAND_TOOLS.find((t) => t.function.name === toolName) as any)?.function.parameters.properties.patch;
+const patchSchema = (toolName: string): SchemaObject | undefined =>
+  CRM_COMMAND_TOOLS.find((t) => t.function.name === toolName)?.function.parameters.properties.patch;
 
 /** Validate a patch against the tool's own patch schema, the way a provider does. */
 function validate(toolName: string, patch: Record<string, unknown>) {
-  const ajv = new (Ajv as any)({ allErrors: true, strict: false });
-  const v = ajv.compile(patchSchema(toolName));
+  const schema = patchSchema(toolName);
+  if (!schema) throw new Error(`no CRM tool named ${toolName} carries a patch schema`);
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  const v = ajv.compile(schema);
   const ok = v(patch);
-  const offending = (v.errors || [])
-    .filter((e: any) => e.keyword === "additionalProperties")
-    .map((e: any) => e.params.additionalProperty);
+  const offending = (v.errors ?? [])
+    .filter((e: ErrorObject) => e.keyword === "additionalProperties")
+    .map((e: ErrorObject) => String(e.params.additionalProperty));
   return { ok, offending };
 }
 

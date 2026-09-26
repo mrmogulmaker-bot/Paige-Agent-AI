@@ -6,6 +6,27 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+### A red job is read STEP by step — and a step behind an aborting step never ran (2026-09-26)
+
+**Symptom.** PR #1454's `verify` job was red. The failing `Test` step was measured against an
+`origin/main` worktree — 20 failures, same five files on both sides — and the job was reported as
+pre-existing. A second failing step beside it, `ESLint (changed src)`, went unread; it was failing on
+a file the PR itself wrote, and merged red. In the same PR, a new pgTAP proof was reported as the
+evidence for the fix while it had never once executed: `database-contract` had been aborting at its
+first step for two days, and every step after it was skipped.
+
+**Root cause.** "Pre-existing" was established for the JOB instead of for each failing STEP, and
+"the proof exists" was allowed to stand in for "the proof ran". A lint scoped to changed files is by
+construction about the change, so it cannot be pre-existing — and under `bash -e` with no step
+conditions, one early failure silently darkens everything after it, including proofs owned by lanes
+that do not know.
+
+**Rule.** List the job's steps (`list_workflow_jobs` returns each step's conclusion) and account for
+EVERY failed and every skipped step by name before calling a red job someone else's. Cite a proof by
+run, job, step and result (master doc §0 *Executed proof*); a skipped proof step is absent, not green.
+
+---
+
 ### Provider identity must never come from a field the tenant can edit (2026-09-24)
 
 **Symptom.** A de-duplication matcher, with 147 green tests and a real-Chromium render drive behind
