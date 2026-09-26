@@ -12,7 +12,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(18);
+SELECT plan(24);
 
 -- Production grants `authenticated` these privileges; a schema replayed from migrations does not.
 -- Reproduced inside the rolled-back transaction, and no wider than production.
@@ -201,6 +201,52 @@ SELECT throws_ok($q$
           'a5520000-0000-0000-0000-0000000005a1', 's.pdf', 'x/cr-s.pdf')$q$,
   '23514', NULL, 'a signed-in maker cannot stamp an upload with a tenant they do not act in');
 SELECT set_config('request.jwt.claims', '', true);
+
+-- 19. A record can only name a file in its subject's own folder.
+SELECT throws_ok($q$
+  INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
+  VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-000000000e02', 'p.pdf',
+          'a5520000-0000-0000-0000-000000000e01/cr-foreign.pdf')$q$,
+  '23514', NULL, 'a record cannot name a file outside its subject''s folder');
+
+-- 20. A record's file cannot be repointed after the fact.
+SELECT throws_ok($q$
+  UPDATE public.credit_report_uploads SET file_path = 'a5520000-0000-0000-0000-000000000e01/cr-other.pdf'
+   WHERE file_path LIKE '%/cr-u1.pdf'$q$,
+  '23514', NULL, 'a record''s file cannot be changed');
+
+-- 21. One file, one record.
+SELECT throws_ok($q$
+  INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
+  VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-000000000e02', 'd.pdf',
+          'a5520000-0000-0000-0000-000000000e02/cr-u2.pdf')$q$,
+  '23505', NULL, 'a second record cannot claim a file that already has one');
+
+-- 22. Staff cannot adopt a stored file that no record stands behind.
+SELECT set_config('request.jwt.claims', '{"sub":"a5520000-0000-0000-0000-0000000005a1","role":"authenticated"}', true);
+SELECT throws_ok($q$
+  INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
+  VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-0000000005a1', 'o.pdf',
+          'a5520000-0000-0000-0000-000000000e02/cr-orphan.pdf')$q$,
+  '23514', NULL, 'staff cannot adopt an existing file that no record stands behind');
+SELECT set_config('request.jwt.claims', '', true);
+
+-- 23. A record naming a client record is about that client and no one else.
+SELECT throws_ok($q$
+  INSERT INTO public.credit_report_uploads (user_id, uploaded_by, client_id, file_name, file_path)
+  VALUES ('a5520000-0000-0000-0000-000000000e03', 'a5520000-0000-0000-0000-0000000000a1',
+          'a5520000-0000-0000-0000-00000000c1e2', 'c.pdf', 'a5520000-0000-0000-0000-000000000e03/cr-c.pdf')$q$,
+  '23514', NULL, 'a record naming a client record must be about that client');
+
+-- 24. Removing a client record detaches its uploads and keeps their tenant.
+INSERT INTO public.credit_report_uploads (user_id, uploaded_by, client_id, file_name, file_path)
+VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-0000000000a1',
+        'a5520000-0000-0000-0000-00000000c1e2', 'u4.pdf', 'a5520000-0000-0000-0000-000000000e02/cr-u4.pdf');
+DELETE FROM public.clients WHERE id = 'a5520000-0000-0000-0000-00000000c1e2';
+SELECT is((SELECT count(*)::int FROM public.credit_report_uploads
+            WHERE file_path LIKE '%/cr-u4.pdf' AND client_id IS NULL
+              AND tenant_id = 'a5520000-0000-0000-0000-00000000000a'), 1,
+  'removing a client record detaches its uploads and keeps their tenant');
 
 SELECT * FROM finish();
 ROLLBACK;
