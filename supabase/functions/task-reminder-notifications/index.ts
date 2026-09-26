@@ -41,7 +41,13 @@ serve(async (req) => {
         const hoursUntil = Math.max(1, Math.round((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60)));
         const timePhrase = hoursUntil <= 1 ? "in less than an hour" : `in less than ${hoursUntil} hours`;
 
-        await supabase.functions.invoke("send-push-notification", {
+        // A reminder belongs to the task's business. With none, there is no business to send it for;
+        // leave the task unreminded rather than mark it done.
+        if (!task.tenant_id) {
+          failed.push({ id: task.id, error: "task has no business to send the reminder for" });
+          continue;
+        }
+        const { error: pushError } = await supabase.functions.invoke("send-push-notification", {
           body: {
             tenant_id: task.tenant_id,
             user_id: task.user_id,
@@ -53,6 +59,8 @@ serve(async (req) => {
             data: { task_id: task.id, due_date: task.due_date },
           },
         });
+        // Only a reminder that was accepted for sending marks the task reminded.
+        if (pushError) throw pushError;
 
         // Mark as reminded
         const { error: updateError } = await supabase
