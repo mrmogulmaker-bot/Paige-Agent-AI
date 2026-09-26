@@ -8,13 +8,13 @@ let cachedVapidKey: string | null = null;
 
 const isIOSDevice = (): boolean => {
   const ua = navigator.userAgent;
-  return /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+  return /iPad|iPhone|iPod/.test(ua) && !('MSStream' in window);
 };
 
 const isStandalone = (): boolean => {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
   );
 };
 
