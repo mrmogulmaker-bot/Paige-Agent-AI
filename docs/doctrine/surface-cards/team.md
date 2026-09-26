@@ -74,6 +74,12 @@ invitation · approval binding · result · owner-visible evidence. It must be p
 Team stays `PARTIAL` until **both**: the owner can see a truthful, tenant-scoped outcome after PAIGE
 acts, **and** the live authenticated flow is proven. Writing a card does not move a truth label.
 
+### 4. Roles and titles (2026-09-26)
+
+Tenant permissions are exactly **owner · admin · member**. **Coach is removed as a permission** and survives only as a title. The Team screen's permission options and the `member_grant_role` / `member_revoke_role` tools will stop offering it in their own slices. **Nothing is removed by writing this down.**
+
+The *Job title* field this card describes is exactly the ruled **title**: descriptive only, never read by a permission decision. That matches the live code, which already writes it through a function that cannot reach `permission`. Authoritative: `docs/doctrine/role-taxonomy-and-matrix.md` §0.
+
 ### Related, and separately active: PR #728's post-merge follow-up
 
 #728 is the merge that put this capability on production. Its post-merge review raised **four P1

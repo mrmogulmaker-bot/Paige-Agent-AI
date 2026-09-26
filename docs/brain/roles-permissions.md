@@ -5,6 +5,13 @@ Authoritative design: `docs/doctrine/role-taxonomy-and-matrix.md`. Live audit:
 `docs/audits/R1-role-call-site-inventory.md`. This file is the fast answer to
 *"how do roles actually work here?"*
 
+## The permission model — owner ruling 2026-09-26 (read first)
+
+- **Roles authorize, titles describe.** The permission set is exactly `owner` · `admin` · `member`, and it does not grow. No tenant-defined permission sets.
+- **Coach is not a permission, anywhere.** It is a title only. A member reaches the clients assigned to them; assignment (a data relationship) is what replaced coach.
+- **A title never enters a permission decision.** It sits in `tenant_members.job_title` today; the tenant-isolation lane owns the title field going forward. It is descriptive and snapshotted on activity records as it was at the time.
+- The code still carries coach checks until the removal slices ship. **Describing today's code is not the same as stating the rule.** Authoritative: `docs/doctrine/role-taxonomy-and-matrix.md` §0 · decision log 2026-09-26.
+
 ## The three stores (conflating them IS the §59 bug)
 
 | Store | Scope key | Tenant-scoped? |

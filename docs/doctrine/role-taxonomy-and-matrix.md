@@ -14,6 +14,21 @@ Every number in §4 and §5 is a real query result against prod (`xygzykjyynhzqy
 
 ---
 
+## 0. Owner ruling — three roles authorize, titles describe (2026-09-26)
+
+**This section supersedes the Class-B target state in §2 and §3. The superseded rows stay visible below, marked, because §58 forbids silently deleting a dated entry.**
+
+- **The permission model is exactly `owner` · `admin` · `member`.** That set does not grow. Everything the code enforces about who may do what comes from these three roles, and only from them. No tenant may define its own permission set. Tenant-defined permissions, if ever needed, would be a separate explicit owner decision with its own design.
+- **Coach holds no power anywhere.** It is not a role, not a permission, not a condition in any check, and not a selectable option on any screen or tool. It survives only as a title. The capability it carried becomes **a member reaches the clients assigned to them**. Assignment is a data relationship and replaces coach; nothing else does. Existing coach seats become `member` + title "Coach", with effective access proven identical.
+- **A title is descriptive tenant data, never an authority input.** It describes what a tenant calls its people and what they do. No policy, function, gate or tool reads a title to decide access, and a CI check enforces this in the same PR as the first change that relies on it. Activity records keep the title *as it was* when the action happened.
+- **The word is "title"** (pending the owner's final word; alternative on record: "customized role"). The display term lives in one place.
+- **Consequence for the other Class-B values:** none of them becomes a `tenant_members` role. This ruling names coach's retirement. How each remaining Class-B value is retired is **not decided here**; each needs its own decision.
+- **Unchanged by this ruling:** Class A (§2) and the §7 standing rule. `user_roles` still holds only platform-global operator tiers, and nothing tenant-scoped is ever authorised from it.
+
+Decision record: `docs/brain/decision-log.md` (2026-09-26).
+
+---
+
 ## 1. The three role stores
 
 The platform has **three** places a role can live. Two are correctly scoped. One is not.
@@ -43,13 +58,16 @@ Operator tiers. Global is the *intent*: they act across all tenants (§53).
 | `platform_admin` | Delegated operator. Fleet/support/provisioning. Cannot grant super_admin, cannot pass `is_platform_owner()`. | `user_roles` ✅ |
 
 ### Class B — TENANT-SCOPED (currently mis-stored in `user_roles`)
+
+> **SUPERSEDED IN PART by §0 (owner ruling, 2026-09-26).** The *"Correct store"* column below described a target in which these values become `tenant_members` roles. They will not: tenant roles are exactly owner · admin · member. `coach` is retired as a permission and survives only as a title. The retirement of the other values is undecided. The classification of these values as **tenant-scoped rather than platform-global** still stands.
+
 These describe a person's authority **inside one business**. Global storage is a category error:
 being "a coach" is meaningless without answering *whose coach*.
 
 | Role | Meaning | Correct store |
 |---|---|---|
 | `admin` | Runs a tenant's workspace | `tenant_members.role` |
-| `coach` | Serves that tenant's clients | `tenant_members.role` |
+| `coach` | ~~Serves that tenant's clients~~ **Retired as a permission (§0); a title only** | ~~`tenant_members.role`~~ **none: a title, never a role** |
 | `client` | An end customer **of** a tenant | `tenant_members` / `clients` linkage |
 | `sales_rep` | Sells for a tenant | `tenant_members.role` |
 | `cs_rep` | Support for a tenant | `tenant_members.role` |
@@ -80,7 +98,8 @@ is already right. Live values: `agency_owner`, `agency_admin`.
 | `agency_owner` | `agency_team_members` | One agency | Agency owner / super_admin | `agency_current_id()` + `agency_team_role()` |
 | `agency_admin` | `agency_team_members` | One agency | Agency owner | same |
 | `owner` | `tenant_members` | One tenant | Tenant owner / provisioning | `is_tenant_member()` + role check |
-| `admin`, `coach`, `sales_rep`, … | `tenant_members` **(target state)** | One tenant | Tenant admin/owner | tenant-scoped check |
+| ~~`admin`, `coach`, `sales_rep`, … | `tenant_members` **(target state)** | One tenant | Tenant admin/owner | tenant-scoped check~~ |
+| `admin`, `member` **(§0, 2026-09-26)** | `tenant_members` | One tenant | Tenant owner (admin/member only; nobody grants owner) | tenant-scoped check |
 
 **Hard rule (§59):** cross-tenant authority is `is_platform_owner()` / `is_platform_operator()` —
 **never** a tenant-level `app_role`. A function branching on `has_role(uid,'admin')` to permit a
@@ -150,7 +169,7 @@ Each slice is its own PR with a §37 producer inventory, §32 proof, and §39 pe
     explicit `service_role` trust branch so the legitimate `paige-ai-chat` path works. Boundary proof
     `supabase/tests/match_paige_memory_authz.sql`; evidence `docs/evidence/match-paige-memory-authz.md`.
     (The remaining c1 candidates + the c2 policy queue are NOT swept here — narrow, evidence-led slice.)
-- **R4 — Backfill + dual-read.** Ensure every Class-B grant exists in `tenant_members`; make helpers
+- **R4 — Backfill + dual-read.** *(Amended by §0, 2026-09-26: Class-B grants do not become `tenant_members` roles. Each is retired, or kept only as a title, by its own decision; coach is ruled.)* Ensure every Class-B grant exists in `tenant_members`; make helpers
   read tenant-scoped first, global second. Reversible.
 - **R5 — Cut over and constrain.** Once no reader depends on global Class-B roles, add a DB CHECK so
   `user_roles` accepts **only** Class-A roles. Structural, not conventional (the §51/§53 pattern).
