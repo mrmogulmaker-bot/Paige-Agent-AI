@@ -7,8 +7,8 @@
 --
 -- After this migration:
 --   * a subscription records its business: the one named, else the business the registering person
---     is working in, else the business of their single client record; a new registration with none of
---     those is refused;
+--     is working in when they belong to it, else the single business they belong to (as a member or a
+--     client); a new registration with none of those is refused;
 --   * the person must belong to that business, and only the person registers their own device;
 --   * the business cannot be changed afterwards;
 --   * one device holds at most one subscription per business;
@@ -71,13 +71,22 @@ BEGIN
 
   IF NEW.tenant_id IS NULL AND _caller IS NOT NULL THEN
     NEW.tenant_id := public.current_user_tenant_id();
+    -- The active workspace can be one the person does not belong to (a platform administrator working
+    -- in a customer's business); a device is never registered there.
+    IF NEW.tenant_id IS NOT NULL
+       AND NOT (public.tenant_assignee_qualifies(NEW.tenant_id, NEW.user_id)
+                OR EXISTS (SELECT 1 FROM public.clients c
+                            WHERE c.tenant_id = NEW.tenant_id AND c.linked_user_id = NEW.user_id)) THEN
+      NEW.tenant_id := NULL;
+    END IF;
   END IF;
   IF NEW.tenant_id IS NULL THEN
-    -- A client registering in a portal has no active business of their own; their client record
-    -- places it, but only when there is exactly one. With more than one, which business they meant is
-    -- unknowable here and the registration is refused rather than guessed.
-    SELECT array_agg(DISTINCT c.tenant_id) INTO _record_tenants
-      FROM public.clients c WHERE c.linked_user_id = NEW.user_id;
+    -- Otherwise the single business the person belongs to, as a member or as a client, places it. With
+    -- more than one, which business they meant is unknowable here and the registration is refused
+    -- rather than guessed.
+    SELECT array_agg(DISTINCT t) INTO _record_tenants FROM (
+      SELECT tm.tenant_id AS t FROM public.tenant_members tm WHERE tm.user_id = NEW.user_id AND tm.status = 'active'
+      UNION SELECT c.tenant_id FROM public.clients c WHERE c.linked_user_id = NEW.user_id) s;
     IF coalesce(array_length(_record_tenants, 1), 0) = 1 THEN
       NEW.tenant_id := _record_tenants[1];
     END IF;
