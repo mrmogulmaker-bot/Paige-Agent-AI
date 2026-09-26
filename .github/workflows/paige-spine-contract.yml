@@ -268,8 +268,11 @@ jobs:
       - run: supabase test db supabase/tests/social_foundation_rls.sql
       - run: supabase test db supabase/tests/social_connection_lifecycle.sql
       # coach_clients status consistency (migration 20270426000000): six policies honour an
-      # assignment only while it is active, and reactivation restores access.
+      # assignment only while it is active, and reactivation restores access. Carries the same
+      # `!cancelled()` condition as the CRM patch proof above, for the same measured reason: the
+      # job's first test step is red on main, and without it this proof would never execute.
       - run: supabase test db supabase/tests/coach_clients_status_consistency.sql
+        if: ${{ !cancelled() }}
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-legacy-shape-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - run: psql -v ON_ERROR_STOP=1 -f scripts/sql/social-foundation-tenant-shaped-proof.sql postgresql://postgres:postgres@127.0.0.1:54322/postgres
       # Trusted task↔thread link — RLS SET-ROLE proof that the edge's server-side validation read
