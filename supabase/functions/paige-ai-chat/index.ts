@@ -1509,7 +1509,13 @@ JSON:`;
               })
               .select("id")
               .single();
-            if (!insertErr) paigeChatUploadId = uploadRec.id;
+            if (!insertErr) {
+              paigeChatUploadId = uploadRec.id;
+            } else {
+              // §13 — a refused record (for example, no tenant to place it in) leaves the stored file
+              // reachable by its owner only. Say so; never echo a path or an identifier.
+              console.error("[paige] credit-report upload record NOT saved", JSON.stringify({ code: insertErr.code ?? null }));
+            }
           }
           }
         } catch (storeErr) {
