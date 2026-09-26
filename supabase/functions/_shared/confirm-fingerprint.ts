@@ -87,43 +87,91 @@ export function confirmIdentityValue(tool: string, args: Record<string, unknown>
 // claimed; `advance_action(p_action_id uuid, ...)` then cast the prefix and failed 22P02 on an
 // approval already spent. The three actions are still `pending_approval`: 13 proposals, 0 dismissals.
 //
-// So every identity key also declares the SHAPE its value must have, and a proposal whose subject
-// does not fit is refused before it can become an approval card — while there is still nothing to
-// lose. Each shape is MEASURED against what the executor accepts, never a guess at what the value
-// "looks like": looser than the database is this incident; stricter is a wall Paige cannot explain.
-// A key without a shape fails confirm-fingerprint.test.ts.
-export const CONFIRM_IDENTITY_SHAPE: Readonly<Record<string, RegExp>> = Object.freeze({
-  // action_advance.action_id is cast to `uuid`. Postgres's uuid input accepts upper or lower hex,
-  // one pair of braces, and a hyphen after any group of four digits; it refuses whitespace, a
-  // prefix, a stray or doubled hyphen, and any other length. Measured on production 2026-09-26 with
-  // `pg_input_is_valid(value, 'uuid')`; every row is pinned in the test.
-  action_advance: /^(?:[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}|\{[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}\})$/i,
-});
+// So every id a tool hands to a typed executor declares the SHAPE the executor accepts, and a call
+// whose id does not fit is refused before it can become an approval card — while there is still
+// nothing to lose. That means every model-supplied id the executor casts, not only the subject
+// (`advance_action` also casts `invocation_id`), and an ABSENT required id as much as a malformed
+// one: tool calling is not strict, so a missing field reaches the handler, and the executor fails on
+// it after the claim exactly as it fails on a prefix. Each shape is MEASURED against what the
+// executor accepts, never a guess at what the value "looks like": looser than the database is this
+// incident; stricter is a wall Paige cannot explain. An identity key that is not a required, shaped
+// field here fails confirm-fingerprint.test.ts.
 
 /**
- * The subject value when the tool declares a shape and the value does not fit it — else null. Null
- * also for a MISSING subject: that is the required-field path's to report, not "shortened". Tests
- * the exact string the executor would receive, untrimmed, because that is what it would cast.
+ * Postgres's `uuid` input: upper or lower hex, one pair of braces, and a hyphen after any group of
+ * four digits. It refuses whitespace, a prefix, a stray or doubled hyphen, and any other length.
+ * Measured on production 2026-09-26 with `pg_input_is_valid(value, 'uuid')`; every row is pinned in
+ * the test.
  */
-export function malformedConfirmIdentity(tool: string, args: Record<string, unknown>): string | null {
-  const shape = CONFIRM_IDENTITY_SHAPE[tool];
-  const value = confirmIdentityValue(tool, args);
-  if (!shape || value === null) return null;
-  return shape.test(value) ? null : value;
+export const UUID_INPUT_SHAPE = /^(?:[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}|\{[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}\})$/i;
+
+export type ConfirmArgShape = Readonly<{ shape: RegExp; required: boolean }>;
+
+export const CONFIRM_ARG_SHAPES: Readonly<Record<string, Readonly<Record<string, ConfirmArgShape>>>> = Object.freeze({
+  // advance_action(p_action_id uuid, ..., p_invocation_id uuid DEFAULT NULL, ...) —
+  // 20260804140000_advance_action_address_scope_guard.sql. The chat passes it no other model-supplied
+  // uuid; its remaining model-supplied arguments are text or jsonb, which accept any string or JSON
+  // value, so they cannot fail a cast.
+  action_advance: Object.freeze({
+    action_id: Object.freeze({ shape: UUID_INPUT_SHAPE, required: true }),
+    invocation_id: Object.freeze({ shape: UUID_INPUT_SHAPE, required: false }),
+  }),
+});
+
+export type ConfirmArgProblem = Readonly<{ field: string; required: boolean; problem: "missing" | "malformed" }>;
+
+/**
+ * The first id in this call the executor cannot address, or null when every declared id fits. A
+ * required id that is absent, null or blank is "missing"; any other value that is not a string of the
+ * declared shape — a prefix, a typo, a trailing space, a number — is "malformed". An optional id may
+ * be absent or null, but one that is present must fit, because the executor casts whatever it is
+ * given, an empty string included. Tests the exact value the executor would receive, untrimmed,
+ * because that is what it would cast.
+ */
+export function unaddressableConfirmArgs(tool: string, args: Record<string, unknown>): ConfirmArgProblem | null {
+  const fields = CONFIRM_ARG_SHAPES[tool];
+  if (!fields) return null;
+  for (const [field, { shape, required }] of Object.entries(fields)) {
+    const v = (args ?? {})[field];
+    if (v === undefined || v === null) {
+      if (required) return { field, required, problem: "missing" };
+      continue;
+    }
+    if (required && typeof v === "string" && v.trim() === "") return { field, required, problem: "missing" };
+    if (typeof v !== "string" || !shape.test(v)) return { field, required, problem: "malformed" };
+  }
+  return null;
 }
 
 /**
- * What the model is told when a subject is refused. One home, because two doors refuse it — the
- * confirm gate before a card is minted, and dispatch for the lanes that never pass the gate — and
- * the operator must hear the same thing from both. Nothing is echoed back: the value is the model's
- * own output, and the instruction is what gets it to the complete id.
+ * What the model is told when an id is refused. One home, because two doors refuse it — the confirm
+ * gate before a card is minted, and dispatch for the lanes that never pass the gate — and the
+ * operator must hear the same thing from both. The doors differ in one fact: at the proposal door
+ * nothing has been proposed yet, while at dispatch an approval may already have been spent (a card
+ * minted before this check existed), so that note never claims no card was made. Nothing is echoed
+ * back: the value is the model's own output. `refused_before_run` tells the write trail this was never
+ * an execution attempt (auditWriteForTool records attempts, not refusals). It is its own field on
+ * purpose: `executed: false` already means something else — n8n management writes return it for a
+ * write that happened without a workflow run — and those must stay on the trail.
  */
-export function unaddressableSubjectRefusal(): { success: false; error: string; note: string } {
-  return {
-    success: false,
-    error: "subject_id_not_addressable",
-    note: "Nothing was proposed or changed, and no approval card was made. The id you sent is not a complete id — it looks shortened. Read the item again to get its complete id (for an action, call action_list, for example with status 'pending_approval'), then call this tool again with that id exactly as listed. Never shorten an id inside a tool call, even when you shorten it for the operator. If you cannot find the complete id, tell the operator in one plain line that you could not find that item and that nothing was changed.",
-  };
+export function unaddressableArgsRefusal(
+  problem: ConfirmArgProblem,
+  door: "proposal" | "dispatch",
+): { success: false; refused_before_run: true; error: "id_not_addressable"; field: string; note: string } {
+  const { field, required } = problem;
+  const lead = door === "proposal"
+    ? "Nothing was proposed or changed, and no approval card was made."
+    : "Nothing was changed.";
+  const what = problem.problem === "missing"
+    ? `You did not send ${field}, and this tool cannot run without it.`
+    : `The ${field} you sent is not a complete id, so it cannot be used.`;
+  const fix = required
+    ? "Read the item again to get its complete id (for an action, call action_list, for example with status 'pending_approval'), then call this tool again with that id exactly as listed. Never shorten or retype an id inside a tool call, even when you shorten it for the operator."
+    : `Call this tool again with the complete ${field}, exactly as it was returned to you, or leave ${field} out.`;
+  const after = door === "proposal"
+    ? "If you cannot find the complete id, tell the operator in one plain line that you could not find that item and that nothing was changed."
+    : "If you cannot find the complete id, or the operator had already approved this, tell them in one plain line that it could not run, that nothing changed, and that they can ask you again.";
+  return { success: false, refused_before_run: true, error: "id_not_addressable", field, note: `${lead} ${what} ${fix} ${after}` };
 }
 
 /**

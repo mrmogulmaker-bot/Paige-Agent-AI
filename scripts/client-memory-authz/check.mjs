@@ -1779,6 +1779,62 @@ const mirrorConfirms = (st) => (t, row) => {
     && subjectSelected.rec.rpc.some((call) => call.name === "advance_action"
       && call.args.p_action_id === FOREIGN && call.args.p_decision_rationale === "original note"));
 
+  // 18.ID1–ID8 — AN ID THE EXECUTOR CANNOT ADDRESS NEVER BECOMES A CARD, never spends an approval,
+  // and never reaches advance_action. 2026-09-13: Paige sent a shortened action id, the approval was
+  // claimed, and advance_action failed its uuid cast — 13 proposals, 0 dismissals. The §39 peer-gate
+  // on #1458 drove the first version of the check here and found that a MISSING subject and a
+  // shortened invocation_id still became cards; these pin the fix on the real handler.
+  {
+    const frames = (r) => r.bodyText.split("\n").filter((l) => l.startsWith("data: ") && l !== "data: [DONE]")
+      .map((l) => { try { return JSON.parse(l.slice(6)); } catch { return null; } }).filter(Boolean);
+    const cardOf = (r) => frames(r).find((f) => f.paige_confirm)?.paige_confirm;
+    const advanced = (r) => r.rec.rpc.filter((c) => c.name === "advance_action");
+    const toldModel = (r) => r.modelEgress.map((b) => b.replace(/\\"/g, '"')).join("\n");
+    const audited = (r) => (r.rec.inserts ?? []).filter((i) => i.table === "paige_audit_log");
+    const WHOLE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const AUTO = { rpcOverrides: {
+      resolve_tool_autonomy: { data: "auto", error: null },
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+    } };
+    const idDrive = (store, args, lane) => drive({
+      stream: true, extraBody: { threadId: THREAD },
+      toolCall: { name: "action_advance", args }, ...lane,
+      tablesExtra: { paige_pending_confirmations: store.table, user_roles: [{ role: "admin" }] },
+      onInsert: mirrorConfirms(store),
+    });
+
+    for (const [id, label, args] of [
+      ["18.ID1", "a shortened subject (the 2026-09-13 value)", { action_id: "424b85ac", to_status: "dismissed" }],
+      ["18.ID2", "a missing subject", { to_status: "dismissed" }],
+      ["18.ID3", "a blank subject", { action_id: "   ", to_status: "dismissed" }],
+      ["18.ID4", "a subject that is not a string", { action_id: 424, to_status: "dismissed" }],
+      ["18.ID5", "a shortened invocation_id", { action_id: WHOLE, to_status: "drafted", invocation_id: "3f2a91c0" }],
+    ]) {
+      const store = makeConfirmStore();
+      const r = await idDrive(store, args, CONFIRM);
+      assert(`${id} ${label}: no card, nothing to spend, and advance_action is never called`,
+        store.rows.length === 0 && !cardOf(r) && advanced(r).length === 0 && /id_not_addressable/.test(toldModel(r)),
+        JSON.stringify({ rows: store.rows.length, card: !!cardOf(r), rpc: advanced(r).length }));
+    }
+
+    const wholeStore = makeConfirmStore();
+    const whole = await idDrive(wholeStore, { action_id: WHOLE, to_status: "dismissed" }, CONFIRM);
+    assert("18.ID6 a complete id still becomes a card — the check refuses only what cannot run",
+      wholeStore.rows.length === 1 && !!cardOf(whole) && advanced(whole).length === 0,
+      JSON.stringify({ rows: wholeStore.rows.length, card: !!cardOf(whole) }));
+
+    const autoStore = makeConfirmStore();
+    const auto = await idDrive(autoStore, { action_id: "424b85ac", to_status: "dismissed" }, AUTO);
+    const steps = frames(auto).filter((f) => f.paige_step).map((f) => f.paige_step.label);
+    assert("18.ID7 the auto lane is refused at dispatch too, and the trace says the action did not move",
+      advanced(auto).length === 0 && /id_not_addressable/.test(toldModel(auto))
+        && steps.includes("Couldn't move that action") && !steps.includes("Moving that action forward"),
+      JSON.stringify({ rpc: advanced(auto).length, steps }));
+    assert("18.ID8 …and a refusal that never ran is not written to the audit trail as a failed write",
+      !audited(auto).some((row) => JSON.stringify(row).includes("id_not_addressable")),
+      JSON.stringify(audited(auto)).slice(0, 300));
+  }
+
   const h16Store = makeConfirmStore();
   let h16Arrivals = 0;
   let h16Release;

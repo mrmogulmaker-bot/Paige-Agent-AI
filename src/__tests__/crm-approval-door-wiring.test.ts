@@ -127,6 +127,15 @@ describe("the refusal tells the truth in words a person can act on (§13/§36)",
     expect(refusal).toContain("Do NOT tell them to approve one at a time or to press Not now");
   });
 
+  it("a lookup that failed after Approve names no control either — the card is gone", () => {
+    // Found by the §39 peer-gate on #1458: this branch said "they can approve it again". It runs only
+    // when approvals were sent, i.e. after Approve, when there is nothing left to approve.
+    const lookupFailed = refusal.slice(refusal.indexOf('approvalResolutionFailed === "lookup_failed"'), refusal.indexOf('approvalResolutionFailed === "unclaimable"'));
+    expect(lookupFailed).toContain("they can ask you again.");
+    expect(lookupFailed).not.toMatch(/they can approve/);
+    expect(lookupFailed).toContain("Do NOT tell them to approve it again or to press any button");
+  });
+
   it("states a cause that is TRUE of the branch it fires on (§13)", () => {
     // Three causes, three messages. A shared line would have Paige assert "more than one
     // approval is waiting" on a lookup that errored, or on a single unclaimable row — the same

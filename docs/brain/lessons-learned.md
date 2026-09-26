@@ -6,6 +6,21 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+### "Handled by another path" is a claim — name the path, or the case is open (2026-09-26)
+
+**Symptom.** #1458's first head refused a shortened id before it could become an approval card, and
+said a MISSING id was "the required-field path's to report." Its docstring and a test both said so.
+The §39 peer-gate searched for that path and found none: the handler has no required-argument check
+and tool calling is not strict. A missing, a blank and a numeric id each became a card, spent the
+approval, and failed at the executor, which is the incident's shape.
+
+**Rule.** A comment, docstring or test that hands a case to another path must name that path (file
+and function). If you cannot find it, the case is yours and it is open. The same review found the
+same class twice more. The shape table covered the subject but not the second `uuid` the executor
+casts. A copy guard matched two bad phrasings and missed a third ("they can approve it again").
+**Guard the class, not the instance you happened to see:** every id the executor casts, and every
+operator-facing terminal note read whole.
+
 ### Consumed is not executed — and a recovery must name a control that exists in that state (2026-09-26)
 
 **Symptom.** `action_advance` showed 13 proposals and 1 consumed, which read as "mostly broken, once

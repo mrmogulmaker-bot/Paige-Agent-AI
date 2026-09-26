@@ -88,8 +88,10 @@ async function askToDismissTwo(host: HTMLElement) {
 describe("PAIGE chat — the recovery a refusal names must exist on screen", () => {
   it("offers Approve and Not now while the card is live, and neither once Approve is pressed", async () => {
     let turn = 0;
-    vi.stubGlobal("fetch", vi.fn(async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
       turn += 1;
+      bodies.push(JSON.parse(String(init?.body ?? "{}")));
       if (turn === 1) {
         return sse([
           `data: ${JSON.stringify({ choices: [{ delta: { content: "I can dismiss both of those." } }] })}\n\n`,
@@ -108,29 +110,33 @@ describe("PAIGE chat — the recovery a refusal names must exist on screen", () 
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
-    await act(async () => { root.render(<PaigeAIChat hideHeader fill soloTenantSafety />); await flush(); });
+    try {
+      await act(async () => { root.render(<PaigeAIChat hideHeader fill soloTenantSafety />); await flush(); });
 
-    await askToDismissTwo(host);
+      await askToDismissTwo(host);
 
-    // The live card: one Approve for both, and Not now beside it.
-    const approve = buttons(host, /^Approve/);
-    expect(approve).toHaveLength(1);
-    expect(approve[0].textContent).toMatch(/Approve 2/);
-    expect(buttons(host, /Not now/)).toHaveLength(1);
+      // The live card: one Approve for both, and Not now beside it.
+      const approve = buttons(host, /^Approve/);
+      expect(approve).toHaveLength(1);
+      expect(approve[0].textContent).toMatch(/Approve 2/);
+      expect(buttons(host, /Not now/)).toHaveLength(1);
 
-    await act(async () => { approve[0].click(); await flush(); });
+      await act(async () => { approve[0].click(); await flush(); });
 
-    // The second turn really ran — this is the state the refusal is spoken in.
-    expect(turn).toBe(2);
-    expect(host.textContent).toMatch(/Nothing happened/);
+      // The second turn really ran, and it carried BOTH approvals — this is the state the refusal is
+      // spoken in, reached by the real press, not by a request built by hand.
+      expect(turn).toBe(2);
+      expect(bodies[1]?.approvedConfirmations).toEqual([FP_A, FP_B]);
+      expect(host.textContent).toMatch(/Nothing happened/);
 
-    // And in that state there is nothing to press: telling the operator to press Not now, or to
-    // approve one at a time, would name a control that does not exist.
-    expect(buttons(host, /Not now/)).toHaveLength(0);
-    expect(buttons(host, /^Approve/)).toHaveLength(0);
-
-    await act(async () => { root.unmount(); });
-    host.remove();
-    vi.unstubAllGlobals();
+      // And in that state there is nothing to press: telling the operator to press Not now, or to
+      // approve one at a time, would name a control that does not exist.
+      expect(buttons(host, /Not now/)).toHaveLength(0);
+      expect(buttons(host, /^Approve/)).toHaveLength(0);
+    } finally {
+      await act(async () => { root.unmount(); });
+      host.remove();
+      vi.unstubAllGlobals();
+    }
   });
 });

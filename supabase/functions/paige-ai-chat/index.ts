@@ -20,7 +20,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { classifyAction, clampLaneByRisk, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
-import { confirmFingerprint, CONFIRM_IDENTITY_KEY, confirmIdentityValue, malformedConfirmIdentity, unaddressableSubjectRefusal } from "../_shared/confirm-fingerprint.ts";
+import { confirmFingerprint, CONFIRM_IDENTITY_KEY, confirmIdentityValue, unaddressableConfirmArgs, unaddressableArgsRefusal } from "../_shared/confirm-fingerprint.ts";
 import { resolveSourceThreadLink } from "../_shared/source-thread-link.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
@@ -208,7 +208,8 @@ function describeStep(
         : "Owner Ops";
       return { label: `Filing this to ${prettyDept}`, group: "owner", detail: "hand-off" };
     }
-    case "action_advance": return { label: "Moving that action forward", group: "owner" };
+    // A failed or refused move must not read as work in progress on the operator's trace.
+    case "action_advance": return { label: failed ? "Couldn't move that action" : "Moving that action forward", group: "owner" };
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
     case "inbox_list": return { label: "Checking the inbox", group: "owner" };
     case "integrations_list": return { label: "Checking your connections", group: "owner" };
@@ -6121,7 +6122,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   to_status: { type: "string", enum: ["assigned", "drafting", "drafted", "executing", "dismissed"] },
                   draft_content: { type: "object", description: "The drafted output, e.g. {channel,subject,body}. Required when to_status='drafted'." },
                   assigned_subagent_slug: { type: "string", description: "Sub-agent to assign, e.g. email-composer." },
-                  invocation_id: { type: "string", description: "The sub-agent invocation that produced this draft — attach it so the work is attributed to the team member who did it (§13/§14)." },
+                  invocation_id: { type: "string", description: "The sub-agent invocation that produced this draft — attach it so the work is attributed to the team member who did it (§13/§14). The complete id, exactly as it was returned to you; leave it out if you do not have it." },
                   decision_rationale: { type: "string", description: "Why, when dismissing." }
                 },
                 required: ["action_id"]
@@ -8431,7 +8432,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const actionLabel = (CRM_ACTION_LABEL[action] ?? "make this change").split(";")[0].trim();
             const refusal = approvalResolutionFailed === "lookup_failed"
               ? { error: "Nothing was created, changed or sent. Something went wrong on our side while checking your approval.",
-                  note: "Say this to the operator in ONE plain line: nothing happened, it was a problem on our side rather than anything they did, and they can approve it again. Do NOT blame their approval, do NOT call this tool again in this reply and do NOT open a new approval card." }
+                  note: "Say this to the operator in ONE plain line: nothing happened, it was a problem on our side rather than anything they did, and they can ask you again. Do NOT tell them to approve it again or to press any button — the approval card is no longer on screen. Do NOT blame their approval, do NOT call this tool again in this reply and do NOT open a new approval card." }
               : approvalResolutionFailed === "unclaimable"
               ? { error: `Nothing was created, changed or sent. That approval no longer matches anything I can run to ${actionLabel}.`,
                   note: "Say this to the operator in ONE plain line: nothing happened, that approval no longer matches anything you can run, and they can just ask you again for the one they want. Do NOT say anything is ambiguous, do NOT call this tool again in this reply and do NOT open a new approval card." }
@@ -8953,14 +8954,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 }) });
                 continue;
               }
-              // A SUBJECT THE EXECUTOR CANNOT ADDRESS NEVER BECOMES A CARD. 2026-09-13: Paige sent a
+              // AN ID THE EXECUTOR CANNOT ADDRESS NEVER BECOMES A CARD. 2026-09-13: Paige sent a
               // shortened action id, the operator approved it, the approval was claimed, and the
               // dismissal failed 22P02 on a cast that could only fail — 13 proposals, 0 dismissals, and
               // the three actions are still pending. Refused here, before anything is recorded, while
-              // there is still nothing to lose. The shape table (confirm-fingerprint.ts) is measured
-              // against what the executor accepts, and holds only tools that declare an identity key.
-              if (malformedConfirmIdentity(tc.function.name, gateArgs) !== null) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(unaddressableSubjectRefusal()) });
+              // there is still nothing to lose: a missing or blank id as much as a shortened one, and
+              // every id the executor casts, not only the subject. The shape table
+              // (confirm-fingerprint.ts) is measured against what the executor accepts.
+              const idProblem = unaddressableConfirmArgs(tc.function.name, gateArgs);
+              if (idProblem) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(unaddressableArgsRefusal(idProblem, "proposal")) });
                 continue;
               }
               const summary = await describeConfirm(tc.function.name, gateArgs);
@@ -11918,11 +11921,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, ...(data as any) };
             } else if (tc.function.name === "action_advance") {
-              // The confirm gate refuses a shortened id before it can become a card; this is the same
-              // refusal for every path that reaches dispatch without the gate, so no lane hands
-              // `advance_action(p_action_id uuid, ...)` a value it can only fail to cast.
-              if (malformedConfirmIdentity("action_advance", args) !== null) {
-                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(unaddressableSubjectRefusal()) });
+              // The confirm gate refuses an id the executor cannot address before it can become a
+              // card. This is the same refusal for every path that reaches dispatch without the gate,
+              // and for a card minted before the gate checked, so no lane hands `advance_action` an id
+              // it can only fail to cast: neither `p_action_id` nor `p_invocation_id`.
+              const idProblem = unaddressableConfirmArgs("action_advance", args);
+              if (idProblem) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(unaddressableArgsRefusal(idProblem, "dispatch")) });
                 continue;
               }
               const { data, error } = await supabaseClient.rpc("advance_action", {
@@ -13309,8 +13314,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (risk === "unclassified" || risk === "owner_only") return;
           let args: any = {}; try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
           let out: any = {}; try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
-          // A proposal or a switched-off tool did not run.
-          if (out?.needs_confirm === true || out?.disabled === true) return;
+          // A proposal or a switched-off tool did not run, and neither did a refusal that says so
+          // (`refused_before_run`). Only refusals that declare it are skipped: the older terminals do
+          // not yet, and are still recorded as failed writes (#1460). NOT `executed: false`: an n8n
+          // management write returns that for a write that happened without a workflow run
+          // (_shared/n8n-management.ts), and it must stay on this trail.
+          if (out?.needs_confirm === true || out?.disabled === true || out?.refused_before_run === true) return;
           const n8nOutcome = N8N_MANAGEMENT_TOOL_NAMES.has(name);
           const failed = n8nOutcome ? out?.ok !== true : out?.success === false;
           const missionReplay = (name === "mission_create" || name === "mission_revise" || name === "mission_transition") && out?.replayed === true;
