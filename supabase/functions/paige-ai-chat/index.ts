@@ -8429,8 +8429,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               approvalResolutionFailed = "lookup_failed";
             }
           }
+          // Why this tool's approvals were not spent, for the card that asked (approval-outcome.ts).
+          if (approvalResolutionFailed) approvalRefusals.set(tc.function.name, approvalResolutionFailed);
           if (approvalResolutionFailed) {
-            approvalRefusals.set(tc.function.name, approvalResolutionFailed);
             // THE RECOVERY MUST BE ONE THE SHIPPED CARD CAN PERFORM (§36/§70.1). The card has a
             // SINGLE Approve button that submits every bound fingerprint at once
             // (PaigeConfirmCard.tsx) — there is no per-row control, no checkbox, no slice. So
