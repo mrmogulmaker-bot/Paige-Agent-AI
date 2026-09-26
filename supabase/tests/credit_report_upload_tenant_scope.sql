@@ -216,7 +216,7 @@ SELECT throws_like($q$
   'UPLOAD_FILE_IMMUTABLE:%', 'a record''s file cannot be changed');
 
 -- 21. One file, one record.
-SELECT throws_like($q$
+SELECT throws_ok($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e02', 'a5520000-0000-0000-0000-000000000e02', 'd.pdf',
           'a5520000-0000-0000-0000-000000000e02/cr-u2.pdf')$q$,
@@ -232,7 +232,7 @@ SELECT throws_like($q$
 SELECT set_config('request.jwt.claims', '', true);
 
 -- 23. A record naming a client record is about that client and no one else.
-SELECT throws_ok($q$
+SELECT throws_like($q$
   INSERT INTO public.credit_report_uploads (user_id, uploaded_by, client_id, file_name, file_path)
   VALUES ('a5520000-0000-0000-0000-000000000e03', 'a5520000-0000-0000-0000-0000000000a1',
           'a5520000-0000-0000-0000-00000000c1e2', 'c.pdf', 'a5520000-0000-0000-0000-000000000e03/cr-c.pdf')$q$,
