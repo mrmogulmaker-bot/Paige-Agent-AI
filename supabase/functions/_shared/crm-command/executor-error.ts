@@ -164,6 +164,9 @@ export function parseExecutorError(
  *   "unproven" the idempotency readback could not be completed. Nothing ran in THIS request, but
  *              an earlier attempt under the same key may already have committed, so this must
  *              never claim that nothing was created. It says what it knows and stops there.
+ *   "lost"     the execute call went out and its answer did not come back: no database code, so
+ *              the database never said no, and the command may have committed. It must not
+ *              claim anything either way.
  *
  * WHY `message` IS RARE AND `note` IS ALWAYS THERE. Walking this response downstream (§37) turns
  * up a consumer past the obvious one. `paige-ai-chat` builds the tool result as
@@ -187,8 +190,15 @@ export function parseExecutorError(
 export function executorFailureSpeech(
   code: string,
   detail: string[],
-  effect: "refused" | "unproven",
+  effect: "refused" | "unproven" | "lost",
 ): { message?: string; note: string; outcome_unknown?: true } {
+  if (effect === "lost") {
+    return {
+      outcome_unknown: true,
+      note:
+        "Say this to the operator in ONE plain line: you could not confirm whether it went through, and they should check the record before asking for it again so it does not happen twice. Do NOT claim anything was created or changed, do NOT claim it failed, do NOT read the code out to them, and do NOT call this tool again in this reply.",
+    };
+  }
   if (effect === "unproven") {
     return {
       // The same fact as data, for the approval card: the chat reads this flag, never the prose,

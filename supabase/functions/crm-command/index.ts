@@ -5,6 +5,7 @@ import { confirmFingerprint } from "../_shared/confirm-fingerprint.ts";
 import { decideGovernedExecution } from "../_shared/paige-spine/governedExecution.ts";
 import { CRM_ACTION_CAPABILITY as ACTION_CAPABILITY, crmApprovalSubject, type CrmAction } from "../_shared/crm-command/catalog.ts";
 import { parseExecutorError, executorFailureSpeech } from "../_shared/crm-command/executor-error.ts";
+import { databaseAnswered } from "../_shared/approval-outcome.ts";
 import { canonicalAppUrl, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
@@ -529,6 +530,11 @@ serve(async (req) => {
   });
   if (commandError) {
     const { code, detail } = parseExecutorError(commandError.message, "CRM_COMMAND_FAILED");
+    // No database code: the answer never came back, and the command may have committed. The
+    // same code (the audit row is unchanged), but never "nothing was created".
+    if (!databaseAnswered(commandError)) {
+      return response(503, { ok: false, outcome: "failed", code, ...executorFailureSpeech(code, [], "lost") });
+    }
     if (code === "CRM_COMPANY_OWNER_SETUP_REQUIRED") return response(409, { ok: false, outcome: "setup_required", code, message: "This CRM-only contact needs an active tenant owner before a company can be created. Restore or assign the workspace owner, then retry." });
     if (code === "CRM_TASK_CONTACT_LINK_UNAVAILABLE") return response(409, { ok: false, outcome: "setup_required", code, message: "The canonical task model does not yet own a contact relationship. Create the task without a contact link, or use a supported company/deal link." });
     return response(code.includes("VERSION_CONFLICT") ? 409 : 422, {
@@ -538,7 +544,9 @@ serve(async (req) => {
     });
   }
 
-  const resultObject = object(result) ?? { ok: false, outcome: "failed" };
+  // The call returned without an error, so it committed; an answer nobody can read says nothing
+  // about what it did.
+  const resultObject = object(result) ?? { ok: false, outcome: "failed", outcome_unknown: true };
   const action = typeof decidedCommand.action === "string" ? decidedCommand.action : body.command.action;
   return successfulResultResponse(resultObject, action);
 });

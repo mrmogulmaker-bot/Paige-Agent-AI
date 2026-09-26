@@ -1739,6 +1739,7 @@ group("a document turn withholds its reply at every scope boundary, including a 
 //
 // So it is read out of this file's own source at startup. Add a fixture with a new `*-MARKER`
 // token and it is covered the moment it exists; there is nothing to remember.
+const { APPROVAL_OUTCOME_SENTENCES } = await import("../../supabase/functions/_shared/approval-outcome.ts");
 const HARNESS_SOURCE = (await import("node:fs")).readFileSync(new URL(import.meta.url), "utf8");
 const DISCOVERED_MARKERS = [...new Set(HARNESS_SOURCE.match(/\b[A-Z][A-Z0-9-]*MARKER[A-Z0-9-]*\b/g) ?? [])]
   .filter((m) => !/^(PROTECTED_MARKERS|DISCOVERED_MARKERS)$/.test(m));
@@ -1779,6 +1780,17 @@ const nonNeutralFrames = (text) => text.split("\n").filter((l) => {
   if (k === "paige_phase") return typeof v !== "string" || v.length > 24;
   if (k === "paige_compacting") return Object.keys(v ?? {}).some((x) => x !== "state" && x !== "pct");
   if (k === "client_scope") return typeof v?.reason !== "string" || v.reason.length > 64;
+  // What became of the person's approvals. Neutral ONLY in its exact shape: fingerprints their own
+  // screen sent, one of three outcomes, and sentences from the server's closed set — never free
+  // text, which is the one way a model's words or evidence could ride along on it.
+  if (k === "paige_approval_outcome") {
+    const closed = (note) => note === undefined || APPROVAL_OUTCOME_SENTENCES.has(note);
+    if (!v || typeof v !== "object" || Object.keys(v).some((x) => x !== "actions" && x !== "note") || !closed(v.note)) return true;
+    return !Array.isArray(v.actions) || v.actions.some((a) => !a || typeof a !== "object"
+      || Object.keys(a).some((x) => x !== "fingerprint" && x !== "outcome" && x !== "note")
+      || typeof a.fingerprint !== "string" || !/^[0-9a-f]{16}(?::[0-9a-f-]{36})?$/.test(a.fingerprint)
+      || !["ran", "not_run", "unconfirmed"].includes(a.outcome) || !closed(a.note));
+  }
   // The refusal sentence itself, and nothing else wearing `choices`.
   if (k === "choices") return !/workspace changed/.test(raw);
   return true;
@@ -3607,6 +3619,47 @@ group("the neutral-frame classifier itself");
     !isNeutral("data: {not json\n\n"), "");
   assert("22.21 an unknown frame key is protected by default",
     !isNeutral(f({ some_new_frame: { title: "anything" } })), "");
+
+  // The approval outcome: neutral in its exact shape, and protected the moment it carries anything
+  // that is not a fingerprint, an outcome, or one of the server's own sentences.
+  const outcome = (o) => f({ paige_approval_outcome: o });
+  assert("22.22 an approval outcome in its own words is neutral",
+    isNeutral(outcome({ note: "It didn't go through.", actions: [{ fingerprint: "a".repeat(16), outcome: "not_run" }] }))
+      && isNeutral(outcome({ actions: [{ fingerprint: `${"b".repeat(16)}:11111111-1111-4111-8111-111111111111`, outcome: "ran" },
+        { fingerprint: "c".repeat(16), outcome: "unconfirmed", note: "This may have gone through. Check before asking again, so it doesn't happen twice." }] })), "");
+  assert("22.23 an approval outcome carrying words of its own is protected",
+    !isNeutral(outcome({ note: "Here is what your file says.", actions: [{ fingerprint: "a".repeat(16), outcome: "not_run" }] }))
+      && !isNeutral(outcome({ actions: [{ fingerprint: "a".repeat(16), outcome: "ran", note: "Done — your notes say the fee is $900." }] })), "");
+  assert("22.24 an approval outcome growing a field, or naming something that is not a fingerprint, is protected",
+    !isNeutral(outcome({ actions: [{ fingerprint: "a".repeat(16), outcome: "ran", summary: "Add Maya" }] }))
+      && !isNeutral(outcome({ actions: [], title: "x" }))
+      && !isNeutral(outcome({ actions: [{ fingerprint: "Add Maya Ortiz", outcome: "ran" }] }))
+      && !isNeutral(outcome({ actions: [{ fingerprint: "a".repeat(16), outcome: "maybe" }] })), "");
+}
+
+group("a turn that stops on a changed workspace still says what became of each approval");
+{
+  // A protected turn (Knowledge evidence), an approval the person sent, and the workspace changing
+  // at the tool-dispatch boundary: the turn ends on "your active workspace changed", which says
+  // anything already finished is saved. The card that asked is owed the same — which of the
+  // approvals that was — or it can only guess.
+  const token = "e".repeat(16);
+  const r = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD, CHILD, CHILD, AGENCY], memberships: [AGENCY, CHILD],
+    chunkContent: "CHILD-PRIVATE-MARKER", provider: ["tool", "text"],
+    bodyExtras: { approvedConfirmations: [token] },
+  });
+  const outcomes = r.responseText.split("\n").filter((l) => l.startsWith("data: ") && l !== "data: [DONE]")
+    .map((l) => { try { return JSON.parse(l.slice(6)); } catch { return null; } })
+    .filter((frame) => frame?.paige_approval_outcome).map((frame) => frame.paige_approval_outcome);
+  assert("27.1 the turn ends on the changed-workspace sentence",
+    r.responseText.includes("active workspace changed"), r.responseText.slice(0, 300));
+  assert("27.2 …and still reports the approval, once, in the order it was sent",
+    outcomes.length === 1 && outcomes[0].actions?.length === 1 && outcomes[0].actions[0].fingerprint === token,
+    JSON.stringify(outcomes));
+  assert("27.3 …as a frame that carries no evidence",
+    outcomes.length === 1 && nonNeutralFrames(`data: ${JSON.stringify({ paige_approval_outcome: outcomes[0] })}\n\n`).length === 0,
+    JSON.stringify(outcomes));
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);
